@@ -449,19 +449,14 @@ function HomePageInner() {
                                                                 rel="noopener noreferrer"
                                                                 title="View on Wowhead"
                                                                 onClick={(e) => e.stopPropagation()}
-                                                                style={{
-                                                                    display: 'inline-flex', alignItems: 'center', gap: 3,
-                                                                    fontSize: '0.62rem', fontWeight: 700, letterSpacing: '0.03em',
-                                                                    color: '#fff', background: 'rgba(224, 118, 20, 0.7)',
-                                                                    border: '1px solid rgba(224, 118, 20, 0.5)', borderRadius: 4,
-                                                                    padding: '1px 5px', textDecoration: 'none',
-                                                                    transition: 'background 0.15s, border-color 0.15s',
-                                                                    lineHeight: 1.4,
-                                                                }}
-                                                                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(224, 118, 20, 1)'; e.currentTarget.style.borderColor = 'rgba(224, 118, 20, 0.8)'; }}
-                                                                onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(224, 118, 20, 0.7)'; e.currentTarget.style.borderColor = 'rgba(224, 118, 20, 0.5)'; }}
+                                                                className="wh-link"
                                                             >
-                                                                WH
+                                                                <svg className="wh-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                                                                    <polyline points="15 3 21 3 21 9" />
+                                                                    <line x1="10" y1="14" x2="21" y2="3" />
+                                                                </svg>
+                                                                <span className="wh-text">Wowhead</span>
                                                             </a>
                                                         </div>
                                                         {item.item.item_subclass && (
