@@ -5,6 +5,9 @@ export const metadata: Metadata = {
     title: 'WoW Auction Optimizer -- Hot Items Radar',
     description:
         'Find high-demand, high-price items across all WoW realms. Powered by real-time auction data analysis.',
+    icons: {
+        icon: '/favicon.svg',
+    },
 };
 
 export default function RootLayout({

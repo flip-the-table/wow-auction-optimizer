@@ -46,6 +46,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger("meta_resolve")
 
+# Suppress noisy HTTP request logs
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
 
 class CircuitBreaker:
     """Simple circuit breaker -- opens when 429 count exceeds threshold in window."""
@@ -84,7 +88,7 @@ class CircuitBreaker:
                 await asyncio.sleep(wait_time)
 
 
-async def get_priority_item_ids(session, limit: int = 2000) -> list[int]:
+async def get_priority_item_ids(session, limit: int = 20000) -> list[int]:
     """
     Get item IDs to resolve, prioritized by:
     1. Items in the hot list (highest hotness_score)
@@ -278,7 +282,7 @@ async def resolve_item(
                 ex=7 * 86400,  # 7 day TTL
             )
 
-        logger.debug("Resolved item %d: %s", item_id, name)
+        logger.info("  ✓ Item %d: %s", item_id, name)
         return True
 
     except Exception as e:
@@ -315,7 +319,7 @@ async def run_meta_resolve():
 
     try:
         async with session_factory() as session:
-            item_ids = await get_priority_item_ids(session, limit=2000)
+            item_ids = await get_priority_item_ids(session)
 
         if not item_ids:
             logger.info("No items to resolve")
@@ -340,18 +344,28 @@ async def run_meta_resolve():
                     failed += 1
 
         # Process in batches of 100 to manage memory
+        batch_t0 = time.monotonic()
         for batch_start in range(0, len(item_ids), 100):
             batch = item_ids[batch_start : batch_start + 100]
             await asyncio.gather(
                 *[resolve_with_semaphore(iid) for iid in batch],
                 return_exceptions=True,
             )
+            done = min(batch_start + 100, len(item_ids))
+            elapsed_batch = time.monotonic() - batch_t0
+            rate = done / max(elapsed_batch, 0.1)
+            remaining = len(item_ids) - done
+            eta_s = remaining / max(rate, 0.01)
+            eta_m = eta_s / 60
             logger.info(
-                "Progress: %d/%d items processed (%d resolved, %d failed)",
-                min(batch_start + 100, len(item_ids)),
+                "Progress: %d/%d (%.0f%%) | %d resolved, %d failed | %.1f items/s | ETA: %.1fm",
+                done,
                 len(item_ids),
+                100.0 * done / len(item_ids),
                 resolved,
                 failed,
+                rate,
+                eta_m,
             )
 
         elapsed = time.monotonic() - t0
