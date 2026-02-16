@@ -92,19 +92,32 @@ export default function ItemDetailPage({ params }: { params: { id: string } }) {
             .finally(() => setLoading(false));
     }, [itemId, selectedRealm, days]);
 
-    // Prepare chart data
-    const chartData = (data?.time_series || []).map((pt) => ({
-        time: new Date(pt.timestamp).toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-        }),
-        price: pt.median_buyout,
-        priceGold: pt.median_buyout ? pt.median_buyout / 10000 : null,
-        demand: pt.demand_proxy_smoothed,
-        listings: pt.listing_count,
-        quantity: pt.total_quantity,
-    }));
+    // Prepare chart data — data is per-realm, not time-series
+    // We need to look up realm names for x-axis labels
+    const realmNameMap = new Map(realms.map(r => [r.connected_realm_id, r.name]));
+    const chartData = (data?.time_series || [])
+        .sort((a, b) => (b.median_buyout ?? 0) - (a.median_buyout ?? 0))
+        .map((pt) => {
+            const realmId = (pt as any).connected_realm_id;
+            return {
+                realm: realmNameMap.get(realmId) ?? (realmId ? `Realm ${realmId}` : ''),
+                price: pt.median_buyout,
+                priceGold: pt.median_buyout ? pt.median_buyout / 10000 : null,
+                demand: pt.demand_proxy_smoothed,
+                listings: pt.listing_count,
+                quantity: pt.total_quantity,
+            };
+        });
+
+    // Gold formatting helper for Y-axis
+    const formatGoldAxis = (copper: number) => {
+        const g = Math.floor(copper / 10000);
+        const s = Math.floor((copper % 10000) / 100);
+        if (g >= 1000) return `${(g / 1000).toFixed(0)}kg`;
+        if (g > 0) return `${g}g`;
+        if (s > 0) return `${s}s`;
+        return `${copper}c`;
+    };
 
     if (loading) {
         return (
@@ -237,7 +250,7 @@ export default function ItemDetailPage({ params }: { params: { id: string } }) {
                 {/* Price chart */}
                 <div className="glass-card sparkline-card fade-in">
                     <h3 style={{ fontSize: '0.92rem', fontWeight: 700, marginBottom: 16, color: 'var(--accent-gold)' }}>
-                        Price History (Gold)
+                        Price by Realm
                     </h3>
                     {chartData.length > 0 ? (
                         <ResponsiveContainer width="100%" height={200}>
@@ -250,19 +263,23 @@ export default function ItemDetailPage({ params }: { params: { id: string } }) {
                                 </defs>
                                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
                                 <XAxis
-                                    dataKey="time"
-                                    tick={{ fontSize: 10, fill: 'var(--text-muted)' }}
+                                    dataKey="realm"
+                                    tick={{ fontSize: 9, fill: 'var(--text-muted)' }}
                                     tickLine={false}
+                                    angle={-30}
+                                    textAnchor="end"
+                                    height={50}
+                                    interval={Math.max(0, Math.floor(chartData.length / 8) - 1)}
                                 />
                                 <YAxis
                                     tick={{ fontSize: 10, fill: 'var(--text-muted)' }}
                                     tickLine={false}
-                                    tickFormatter={(v: number) => `${Math.round(v)}g`}
+                                    tickFormatter={(v: number) => formatGoldAxis(v)}
                                 />
                                 <Tooltip content={(props: any) => <SparklineTooltip {...props} format="gold" />} />
                                 <Area
                                     type="monotone"
-                                    dataKey="priceGold"
+                                    dataKey="price"
                                     stroke="var(--accent-gold)"
                                     fill="url(#priceGrad)"
                                     strokeWidth={2}
@@ -281,7 +298,7 @@ export default function ItemDetailPage({ params }: { params: { id: string } }) {
                 {/* Demand chart */}
                 <div className="glass-card sparkline-card fade-in">
                     <h3 style={{ fontSize: '0.92rem', fontWeight: 700, marginBottom: 16, color: 'var(--accent-purple)' }}>
-                        Demand Proxy (Smoothed Churn)
+                        Demand by Realm (Smoothed Churn)
                     </h3>
                     {chartData.length > 0 ? (
                         <ResponsiveContainer width="100%" height={200}>
@@ -294,9 +311,13 @@ export default function ItemDetailPage({ params }: { params: { id: string } }) {
                                 </defs>
                                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
                                 <XAxis
-                                    dataKey="time"
-                                    tick={{ fontSize: 10, fill: 'var(--text-muted)' }}
+                                    dataKey="realm"
+                                    tick={{ fontSize: 9, fill: 'var(--text-muted)' }}
                                     tickLine={false}
+                                    angle={-30}
+                                    textAnchor="end"
+                                    height={50}
+                                    interval={Math.max(0, Math.floor(chartData.length / 8) - 1)}
                                 />
                                 <YAxis
                                     tick={{ fontSize: 10, fill: 'var(--text-muted)' }}

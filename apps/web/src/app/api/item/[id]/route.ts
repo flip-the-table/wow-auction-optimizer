@@ -109,13 +109,14 @@ export async function GET(
 
   const timeSeries = tsRows.map((row: any) => ({
     timestamp: row.timestamp,
-    median_buyout: row.median_buyout,
-    demand_proxy_smoothed: row.demand_proxy_smoothed,
-    listing_count: row.listing_count,
-    total_quantity: row.total_quantity,
-    ewma_price: row.ewma_price,
-    ewma_demand: row.ewma_demand,
-    snapshot_count: row.snapshot_count,
+    median_buyout: Number(row.median_buyout),
+    demand_proxy_smoothed: Number(row.demand_proxy_smoothed),
+    listing_count: Number(row.listing_count),
+    total_quantity: Number(row.total_quantity),
+    ewma_price: Number(row.ewma_price),
+    ewma_demand: Number(row.ewma_demand),
+    snapshot_count: Number(row.snapshot_count),
+    connected_realm_id: row.connected_realm_id ? Number(row.connected_realm_id) : undefined,
   }));
 
   return NextResponse.json({
