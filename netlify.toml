@@ -1,0 +1,11 @@
+[build]
+  base = "apps/web"
+  command = "npm install && npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "18"
+
+# Next.js on Netlify uses the @netlify/plugin-nextjs automatically
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
