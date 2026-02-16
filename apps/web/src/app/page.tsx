@@ -411,6 +411,8 @@ function HomePageInner() {
                         <tbody>
                             {sortedItems.map((item, idx) => {
                                 const isExpanded = expandedItems.has(item.item.item_id);
+                                const connectedRealm = realms.find(r => r.connected_realm_id === item.best_realm.connected_realm_id);
+                                const realmTooltip = connectedRealm && connectedRealm.realm_count > 1 ? `Connected realms: ${connectedRealm.all_names.join(', ')}` : undefined;
                                 return (
                                     <React.Fragment key={`${item.item.item_id}-${item.best_realm.connected_realm_id}`}>
                                         <tr
@@ -449,12 +451,22 @@ function HomePageInner() {
 
                                             {/* Best Realm */}
                                             <td>
-                                                <div style={{ fontWeight: 500 }}>
+                                                <div style={{ fontWeight: 500 }} title={realmTooltip}>
                                                     {item.best_realm.realm_name ?? `Realm ${item.best_realm.connected_realm_id}`}
+                                                    {connectedRealm && connectedRealm.realm_count > 1 && (
+                                                        <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginLeft: 4 }}>({connectedRealm.realm_count})</span>
+                                                    )}
                                                 </div>
                                                 {item.alternate_realms.length > 0 && (
-                                                    <div
-                                                        style={{ fontSize: '0.72rem', color: 'var(--accent-gold)', cursor: 'pointer', userSelect: 'none' }}
+                                                    <button
+                                                        style={{
+                                                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                                                            fontSize: '0.78rem', fontWeight: 600, color: 'var(--accent-gold)',
+                                                            background: isExpanded ? 'rgba(255, 215, 0, 0.12)' : 'rgba(255, 215, 0, 0.06)',
+                                                            border: '1px solid rgba(255, 215, 0, 0.25)', borderRadius: 6,
+                                                            padding: '3px 10px', cursor: 'pointer', userSelect: 'none',
+                                                            marginTop: 4, transition: 'all 0.15s ease',
+                                                        }}
                                                         onClick={(e) => {
                                                             e.stopPropagation();
                                                             setExpandedItems(prev => {
@@ -465,8 +477,9 @@ function HomePageInner() {
                                                             });
                                                         }}
                                                     >
-                                                        {isExpanded ? '▾' : '▸'} +{item.alternate_realms.length} alt
-                                                    </div>
+                                                        <span style={{ fontSize: '0.9rem', lineHeight: 1 }}>{isExpanded ? '▾' : '▸'}</span>
+                                                        +{item.alternate_realms.length} realms
+                                                    </button>
                                                 )}
                                             </td>
 
