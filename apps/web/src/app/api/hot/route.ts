@@ -48,6 +48,8 @@ export async function GET(request: NextRequest) {
         f.demand_z,
         f.hotness_score,
         f.confidence,
+        f.listing_count,
+        f.total_quantity,
         f.baseline_window_days,
         f.updated_at,
         f.sell_suitability_score,
@@ -78,6 +80,8 @@ export async function GET(request: NextRequest) {
         f.demand_z,
         f.hotness_score,
         f.confidence,
+        f.listing_count,
+        f.total_quantity,
         f.baseline_window_days,
         f.updated_at,
         f.sell_suitability_score,
@@ -124,6 +128,7 @@ export async function GET(request: NextRequest) {
         LEFT JOIN (
           SELECT DISTINCT ON (connected_realm_id) connected_realm_id, name
           FROM realms
+          ORDER BY connected_realm_id, name ASC
         ) r ON f.connected_realm_id = r.connected_realm_id
         WHERE f.region = ${region}
           AND f.item_id = ${row.item_id}
@@ -168,6 +173,8 @@ export async function GET(request: NextRequest) {
         demand_z: Number(row.demand_z),
         hotness_score: Number(row.hotness_score),
         confidence: Number(row.confidence),
+        listing_count: Number(row.listing_count),
+        total_quantity: Number(row.total_quantity),
         baseline_window_days: row.baseline_window_days ?? 14,
         updated_at: row.updated_at,
       };

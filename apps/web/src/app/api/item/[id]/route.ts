@@ -52,6 +52,7 @@ export async function GET(
     LEFT JOIN (
       SELECT DISTINCT ON (connected_realm_id) connected_realm_id, name
       FROM realms
+      ORDER BY connected_realm_id, name ASC
     ) r ON f.connected_realm_id = r.connected_realm_id
     WHERE f.region = ${region}
       AND f.item_id = ${itemId}
@@ -166,12 +167,64 @@ export async function GET(
   } catch {
     // Table may not exist yet — return empty array
   }
+  // Base stats (region-wide and per-realm)
+  const allRealmStats = await sql`
+    SELECT
+      COUNT(*)::int as realm_count,
+      AVG(a.median_buyout)::bigint as mean_price,
+      PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY a.median_buyout)::bigint as median_price,
+      SUM(a.total_quantity)::int as total_available,
+      MIN(a.median_buyout)::bigint as min_price,
+      MAX(a.median_buyout)::bigint as max_price
+    FROM item_realm_aggregates a
+    WHERE a.item_id = ${itemId}
+      AND a.region = ${region}
+  `;
+
+  let selectedRealmStats = null;
+  if (realm !== null) {
+    const srRows = await sql`
+      SELECT
+        a.median_buyout as current_price,
+        a.total_quantity as available,
+        a.listing_count,
+        a.price_mean,
+        a.ewma_price
+      FROM item_realm_aggregates a
+      WHERE a.item_id = ${itemId}
+        AND a.region = ${region}
+        AND a.connected_realm_id = ${realm}
+    `;
+    if (srRows.length > 0) {
+      const sr = srRows[0];
+      selectedRealmStats = {
+        current_price: Number(sr.current_price),
+        available: Number(sr.available),
+        listing_count: Number(sr.listing_count),
+        mean_price: Math.round(Number(sr.price_mean)),
+        ewma_price: Math.round(Number(sr.ewma_price)),
+      };
+    }
+  }
+
+  const baseStats = {
+    all_realms: allRealmStats.length > 0 ? {
+      realm_count: Number(allRealmStats[0].realm_count),
+      mean_price: Number(allRealmStats[0].mean_price),
+      median_price: Number(allRealmStats[0].median_price),
+      total_available: Number(allRealmStats[0].total_available),
+      min_price: Number(allRealmStats[0].min_price),
+      max_price: Number(allRealmStats[0].max_price),
+    } : null,
+    selected_realm: selectedRealmStats,
+  };
 
   return NextResponse.json({
     item: itemInfo,
     realm_leaderboard: realmLeaderboard,
     time_series: timeSeries,
     daily_time_series: dailyTimeSeries,
+    base_stats: baseStats,
     baseline_window_days: days,
     generated_at: new Date().toISOString(),
   });
