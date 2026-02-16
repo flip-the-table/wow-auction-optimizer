@@ -105,31 +105,51 @@ class Snapshot(Base):
     )
 
 
-class ItemRealmSnapshotMetric(Base):
-    __tablename__ = "item_realm_snapshot_metrics"
+class ItemRealmAggregate(Base):
+    """Aggregated per-item per-realm stats — one row per (region, realm, item).
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
-    snapshot_id = Column(Integer, nullable=False, index=True)
-    item_id = Column(Integer, nullable=False)
-    connected_realm_id = Column(Integer, nullable=False)
-    listing_count = Column(Integer, nullable=False, default=0)
-    total_quantity = Column(Integer, nullable=False, default=0)
+    Uses EWMA for running price/demand averages and Welford's online algorithm
+    for incremental mean/variance (enabling z-score calculation without raw history).
+    """
+    __tablename__ = "item_realm_aggregates"
+
+    # Composite PK: one row per region + realm + item
+    region = Column(String(16), primary_key=True)
+    connected_realm_id = Column(Integer, primary_key=True)
+    item_id = Column(Integer, primary_key=True)
+
+    # Current snapshot values
+    listing_count = Column(Integer, default=0)
+    total_quantity = Column(Integer, default=0)
     min_buyout = Column(BigInteger, nullable=True)
     median_buyout = Column(BigInteger, nullable=True)
     mean_buyout = Column(BigInteger, nullable=True)
-    p10_buyout = Column(BigInteger, nullable=True)
-    p90_buyout = Column(BigInteger, nullable=True)
     vwap_buyout = Column(BigInteger, nullable=True)
-    demand_proxy_raw = Column(Float, nullable=True, default=0.0)
-    demand_proxy_smoothed = Column(Float, nullable=True, default=0.0)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # EWMA running averages
+    ewma_price = Column(Float, nullable=True)
+    ewma_demand = Column(Float, nullable=True)
+
+    # Demand proxy
+    demand_proxy_raw = Column(Float, default=0.0)
+    demand_proxy_smoothed = Column(Float, default=0.0)
+
+    # Welford's online algorithm for running mean + variance
+    price_mean = Column(Float, default=0.0)
+    price_m2 = Column(Float, default=0.0)
+    demand_mean = Column(Float, default=0.0)
+    demand_m2 = Column(Float, default=0.0)
+
+    snapshot_count = Column(Integer, default=0)
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
     __table_args__ = (
         Index(
-            "ix_metrics_realm_item_snapshot",
+            "ix_aggregates_region_realm",
+            "region",
             "connected_realm_id",
-            "item_id",
-            snapshot_id.desc(),
         ),
     )
 

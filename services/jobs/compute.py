@@ -1,40 +1,35 @@
 """
-Compute Job -- Calculates rolling baselines, z-scores, hotness, and confidence.
+Compute Job -- Reads aggregate stats and computes item features (z-scores, hotness).
 
-This job runs after ingest and:
-1. Loads the rolling window of snapshot metrics (default 14 days).
-2. Computes per-realm-per-item baselines: median price, median demand.
-3. Computes regional per-item baselines: median across all realms.
-4. Calculates robust z-scores: (current - median) / (1.4826 * MAD + eps).
-5. Computes hotness score (weighted demand_z + price_z).
-6. Computes confidence (freshness, snapshot count, volatility, liquidity).
-7. Computes sell suitability (price_z * demand_z * confidence).
-8. Applies liquidity filters and upserts item_realm_features_latest.
+This job:
+1. Reads running stats from item_realm_aggregates (Welford's mean/variance).
+2. Computes z-scores for price and demand using the stored running stats.
+3. Computes hotness_score, sell_suitability_score, and confidence.
+4. UPSERTs results into item_realm_features_latest for the API to serve.
 
 Run: python -m services.jobs.compute
 """
 
 import asyncio
 import logging
+import math
 import sys
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-import numpy as np
-
+# Add project root to path for imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from sqlalchemy import select, text, delete
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from packages.shared.config import get_settings
 from packages.shared.db import get_async_engine, get_async_session_factory
 from packages.shared.models import (
     Base,
+    ItemRealmAggregate,
     ItemRealmFeaturesLatest,
-    ItemRealmSnapshotMetric,
-    Snapshot,
 )
 
 logging.basicConfig(
@@ -44,61 +39,50 @@ logging.basicConfig(
 logger = logging.getLogger("compute")
 
 
-def robust_z(values: np.ndarray, current: float) -> tuple[float, float, float]:
-    """
-    Compute robust z-score using median and MAD.
+def welford_std(m2: float, count: int) -> float:
+    """Recover standard deviation from Welford's M2 and count."""
+    if count < 2:
+        return 0.0
+    variance = m2 / (count - 1)
+    return math.sqrt(max(0.0, variance))
 
-    MAD = median absolute deviation
-    robust_z = (current - median) / (1.4826 * MAD + eps)
 
-    The factor 1.4826 makes MAD a consistent estimator for
-    the standard deviation of a normal distribution.
-
-    Returns: (median, mad, z_score)
-    """
-    eps = 1e-9
-    if len(values) == 0:
-        return 0.0, 0.0, 0.0
-
-    median = float(np.median(values))
-    mad = float(np.median(np.abs(values - median)))
-    z = (current - median) / (1.4826 * mad + eps)
-
-    return median, mad, z
+def compute_z(value: float, mean: float, m2: float, count: int) -> float:
+    """Compute z-score from Welford's running stats."""
+    std = welford_std(m2, count)
+    if std < 1e-9:
+        return 0.0
+    return (value - mean) / std
 
 
 def compute_confidence(
     snapshot_count: int,
     min_snapshots: int,
-    latest_fetched_at: datetime,
-    now: datetime,
-    mad_price: float,
-    mad_demand: float,
     listing_count: int,
     total_quantity: int,
     min_listing_count: int,
     min_total_quantity: int,
+    price_std: float,
+    demand_std: float,
 ) -> float:
     """
-    Composite confidence score (0..1) based on:
-    - snapshot_count: more snapshots => higher confidence
-    - freshness: older data => exponential decay
-    - volatility: high MAD => lower confidence
-    - liquidity: more listings/quantity => higher confidence
+    Compute confidence score [0, 1] based on data quality.
+
+    Weighted combination of:
+    - Snapshot count factor (30%): have we seen enough data points?
+    - Volatility factor (30%): low volatility = more confident
+    - Liquidity factor (40%): enough listings + quantity?
     """
-    # Snapshot count factor (sigmoid-like)
-    count_factor = min(1.0, snapshot_count / max(min_snapshots * 2, 1))
+    # Snapshot count factor
+    count_factor = min(1.0, snapshot_count / max(min_snapshots, 1))
 
-    # Freshness factor (exponential decay, half-life = 2 hours)
-    if latest_fetched_at.tzinfo is None:
-        latest_fetched_at = latest_fetched_at.replace(tzinfo=timezone.utc)
-    age_hours = (now - latest_fetched_at).total_seconds() / 3600.0
-    freshness_factor = 2.0 ** (-age_hours / 2.0)
+    # Volatility factor (lower is better)
+    price_cv = price_std / max(1.0, abs(price_std) + 1e-9)
+    demand_cv = demand_std / max(1.0, abs(demand_std) + 1e-9)
+    avg_cv = (price_cv + demand_cv) / 2
+    volatility = max(0.0, 1.0 - avg_cv)
 
-    # Volatility penalty (higher MAD => lower confidence)
-    volatility = 1.0 / (1.0 + 0.1 * (mad_price + mad_demand))
-
-    # Liquidity bonus
+    # Liquidity factor
     liquidity = min(1.0, (
         listing_count / max(min_listing_count * 3, 1) * 0.5 +
         total_quantity / max(min_total_quantity * 3, 1) * 0.5
@@ -106,9 +90,8 @@ def compute_confidence(
 
     confidence = (
         count_factor * 0.30 +
-        freshness_factor * 0.30 +
-        volatility * 0.20 +
-        liquidity * 0.20
+        volatility * 0.30 +
+        liquidity * 0.40
     )
 
     return round(max(0.0, min(1.0, confidence)), 4)
@@ -118,9 +101,8 @@ async def run_compute():
     """Main compute job entry point."""
     settings = get_settings()
     logger.info(
-        "Starting compute job for region=%s, window=%d days",
+        "Starting compute job for region=%s",
         settings.region,
-        settings.baseline_window_days,
     )
 
     t0 = time.monotonic()
@@ -130,166 +112,109 @@ async def run_compute():
 
     session_factory = get_async_session_factory()
     now = datetime.now(timezone.utc)
-    window_start = now - timedelta(days=settings.baseline_window_days)
 
     async with session_factory() as session:
-        # Get all snapshots in window
+        # Load all aggregates for the region
         stmt = (
-            select(Snapshot)
-            .where(Snapshot.region == settings.region)
-            .where(Snapshot.status == "success")
-            .where(Snapshot.fetched_at >= window_start)
-            .order_by(Snapshot.fetched_at.asc())
+            select(ItemRealmAggregate)
+            .where(ItemRealmAggregate.region == settings.region)
         )
         result = await session.execute(stmt)
-        snapshots = result.scalars().all()
-        snapshot_ids = [s.id for s in snapshots]
-        snapshot_times = {s.id: s.fetched_at for s in snapshots}
-        snapshot_realms = {s.id: s.connected_realm_id for s in snapshots}
+        aggregates = result.scalars().all()
 
-        if not snapshot_ids:
-            logger.warning("No snapshots found in window, nothing to compute")
+        if not aggregates:
+            logger.warning("No aggregates found, nothing to compute")
             return
 
-        logger.info(
-            "Found %d snapshots in %d-day window",
-            len(snapshot_ids),
-            settings.baseline_window_days,
-        )
-
-        # Load all metrics in the window
-        # Process in batches by connected_realm_id to manage memory
-        distinct_realms_stmt = (
-            select(Snapshot.connected_realm_id)
-            .where(Snapshot.id.in_(snapshot_ids))
-            .distinct()
-        )
-        result = await session.execute(distinct_realms_stmt)
-        connected_realm_ids = [row[0] for row in result]
-
-        logger.info("Computing features for %d connected realms", len(connected_realm_ids))
+        logger.info("Processing %d aggregate rows", len(aggregates))
 
         features_batch = []
         total_items = 0
 
-        for cr_id in connected_realm_ids:
-            # Get snapshot IDs for this realm
-            realm_snapshot_ids = [
-                sid for sid in snapshot_ids if snapshot_realms.get(sid) == cr_id
-            ]
-            if not realm_snapshot_ids:
-                continue
+        for agg in aggregates:
+            # Current values
+            current_price = agg.median_buyout or 0
+            current_demand = agg.demand_proxy_smoothed or 0.0
 
-            # Load metrics for this realm
-            stmt = (
-                select(ItemRealmSnapshotMetric)
-                .where(ItemRealmSnapshotMetric.snapshot_id.in_(realm_snapshot_ids))
-                .where(ItemRealmSnapshotMetric.connected_realm_id == cr_id)
+            # Z-scores from Welford's running stats
+            price_z = compute_z(
+                float(current_price),
+                agg.price_mean or 0.0,
+                agg.price_m2 or 0.0,
+                agg.snapshot_count or 0,
             )
-            result = await session.execute(stmt)
-            metrics = result.scalars().all()
+            demand_z = compute_z(
+                current_demand,
+                agg.demand_mean or 0.0,
+                agg.demand_m2 or 0.0,
+                agg.snapshot_count or 0,
+            )
 
-            if not metrics:
+            # Percentage deviations from running mean
+            eps = 1e-9
+            baseline_price = agg.price_mean or float(current_price)
+            baseline_demand = agg.demand_mean or current_demand
+            price_pct_diff = (float(current_price) - baseline_price) / max(abs(baseline_price), eps)
+            demand_pct_diff = (current_demand - baseline_demand) / max(abs(baseline_demand), eps)
+
+            # Hotness score
+            hotness = (
+                settings.weight_demand * demand_z +
+                settings.weight_price * price_z
+            )
+
+            # Standard deviations for confidence
+            price_std = welford_std(agg.price_m2 or 0.0, agg.snapshot_count or 0)
+            demand_std = welford_std(agg.demand_m2 or 0.0, agg.snapshot_count or 0)
+
+            # Confidence
+            confidence = compute_confidence(
+                snapshot_count=agg.snapshot_count or 0,
+                min_snapshots=settings.min_snapshots_for_confidence,
+                listing_count=agg.listing_count or 0,
+                total_quantity=agg.total_quantity or 0,
+                min_listing_count=settings.min_listing_count,
+                min_total_quantity=settings.min_total_quantity,
+                price_std=price_std,
+                demand_std=demand_std,
+            )
+
+            # Sell suitability: items with high price AND high demand AND high confidence
+            sell_suitability = max(0, price_z) * max(0, demand_z) * confidence
+
+            # Liquidity filter
+            if (agg.listing_count or 0) < settings.min_listing_count:
+                continue
+            if (agg.total_quantity or 0) < settings.min_total_quantity:
                 continue
 
-            # Group by item_id
-            item_metrics: dict[int, list] = {}
-            for m in metrics:
-                item_metrics.setdefault(m.item_id, []).append(m)
+            features_batch.append({
+                "region": settings.region,
+                "connected_realm_id": agg.connected_realm_id,
+                "item_id": agg.item_id,
+                "current_price": current_price,
+                "current_demand": round(current_demand, 6),
+                "baseline_price": int(baseline_price),
+                "baseline_demand": round(baseline_demand, 6),
+                "price_pct_diff": round(price_pct_diff, 4),
+                "demand_pct_diff": round(demand_pct_diff, 4),
+                "price_z": round(price_z, 4),
+                "demand_z": round(demand_z, 4),
+                "hotness_score": round(hotness, 4),
+                "sell_suitability_score": round(sell_suitability, 4),
+                "confidence": confidence,
+                "listing_count": agg.listing_count or 0,
+                "total_quantity": agg.total_quantity or 0,
+                "baseline_window_days": settings.baseline_window_days,
+                "snapshot_count": agg.snapshot_count or 0,
+                "updated_at": now,
+            })
+            total_items += 1
 
-            latest_snapshot_id = max(realm_snapshot_ids)
-
-            for item_id, item_rows in item_metrics.items():
-                # Sort by snapshot_id (ascending)
-                item_rows.sort(key=lambda x: x.snapshot_id)
-
-                # Current values = latest snapshot
-                latest = item_rows[-1]
-                current_price = latest.median_buyout or 0
-                current_demand = latest.demand_proxy_smoothed or 0.0
-
-                # Collect historical values
-                prices = np.array([
-                    r.median_buyout for r in item_rows
-                    if r.median_buyout is not None and r.median_buyout > 0
-                ], dtype=np.float64)
-
-                demands = np.array([
-                    r.demand_proxy_smoothed for r in item_rows
-                    if r.demand_proxy_smoothed is not None
-                ], dtype=np.float64)
-
-                if len(prices) == 0 or len(demands) == 0:
-                    continue
-
-                # Robust z-scores (single-point: z=0, baseline=current)
-                median_price, mad_price, price_z = robust_z(prices, float(current_price))
-                median_demand, mad_demand, demand_z = robust_z(demands, current_demand)
-
-                # Percentage deviations
-                eps = 1e-9
-                price_pct_diff = (current_price - median_price) / max(median_price, eps)
-                demand_pct_diff = (current_demand - median_demand) / max(median_demand, eps)
-
-                # Hotness score
-                hotness = (
-                    settings.weight_demand * demand_z +
-                    settings.weight_price * price_z
-                )
-
-                # Confidence
-                latest_time = snapshot_times.get(latest.snapshot_id, now)
-                confidence = compute_confidence(
-                    snapshot_count=len(item_rows),
-                    min_snapshots=settings.min_snapshots_for_confidence,
-                    latest_fetched_at=latest_time,
-                    now=now,
-                    mad_price=mad_price,
-                    mad_demand=mad_demand,
-                    listing_count=latest.listing_count or 0,
-                    total_quantity=latest.total_quantity or 0,
-                    min_listing_count=settings.min_listing_count,
-                    min_total_quantity=settings.min_total_quantity,
-                )
-
-                # Sell suitability: items with high price AND high demand AND high confidence
-                sell_suitability = (
-                    max(0, price_z) * max(0, demand_z) * confidence
-                )
-
-                # Liquidity filter
-                if (latest.listing_count or 0) < settings.min_listing_count:
-                    continue
-                if (latest.total_quantity or 0) < settings.min_total_quantity:
-                    continue
-
-                features_batch.append({
-                    "region": settings.region,
-                    "connected_realm_id": cr_id,
-                    "item_id": item_id,
-                    "current_price": current_price,
-                    "current_demand": round(current_demand, 6),
-                    "baseline_price": int(median_price),
-                    "baseline_demand": round(median_demand, 6),
-                    "price_pct_diff": round(price_pct_diff, 4),
-                    "demand_pct_diff": round(demand_pct_diff, 4),
-                    "price_z": round(price_z, 4),
-                    "demand_z": round(demand_z, 4),
-                    "hotness_score": round(hotness, 4),
-                    "sell_suitability_score": round(sell_suitability, 4),
-                    "confidence": confidence,
-                    "listing_count": latest.listing_count or 0,
-                    "total_quantity": latest.total_quantity or 0,
-                    "baseline_window_days": settings.baseline_window_days,
-                    "snapshot_count": len(item_rows),
-                    "updated_at": now,
-                })
-                total_items += 1
-
-                # Flush in batches of 1000
-                if len(features_batch) >= 1000:
-                    await _upsert_features(session, features_batch)
-                    features_batch = []
+            # Flush in batches of 1000
+            if len(features_batch) >= 1000:
+                await _upsert_features(session, features_batch)
+                features_batch = []
 
         # Final flush
         if features_batch:

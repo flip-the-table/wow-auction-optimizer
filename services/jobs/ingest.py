@@ -1,12 +1,13 @@
 """
-Ingest Job -- Fetches auction data from Blizzard API and computes demand proxy.
+Ingest Job -- Fetches auction data from Blizzard API and updates aggregate stats.
 
 This job:
 1. Fetches the connected realm index and upserts realm records.
-2. For each connected realm, fetches auction listings (with ETag caching).
+2. For each connected realm, fetches auction listings.
 3. Aggregates per-item metrics: listing_count, total_quantity, buyout stats.
-4. Computes demand proxy via snapshot churn (normalized_churn + EWMA).
-5. Queues unresolved item IDs for metadata resolution.
+4. Computes demand proxy from delta vs previous aggregate.
+5. UPSERTs running stats into item_realm_aggregates (Welford's + EWMA).
+6. Queues unresolved item IDs for metadata resolution.
 
 Run: python -m services.jobs.ingest
 """
@@ -33,7 +34,7 @@ from packages.shared.db import get_async_engine, get_async_session_factory
 from packages.shared.models import (
     Base,
     ItemMetadataStatus,
-    ItemRealmSnapshotMetric,
+    ItemRealmAggregate,
     Realm,
     Snapshot,
 )
@@ -55,7 +56,6 @@ async def ensure_tables():
 
 def extract_connected_realm_id(href: str) -> int:
     """Extract numeric ID from connected realm href URL."""
-    # href looks like "https://us.api.blizzard.com/data/wow/connected-realm/1136?namespace=dynamic-us"
     path = href.split("?")[0]
     return int(path.rstrip("/").split("/")[-1])
 
@@ -118,7 +118,7 @@ def compute_buyout_stats(auctions: list[dict]) -> dict[int, dict]:
     For each item_id, computes:
     - listing_count: number of distinct auction listings
     - total_quantity: sum of quantities
-    - min/median/mean/p10/p90 buyout (unit price)
+    - min/median/mean buyout (unit price)
     - vwap_buyout: volume-weighted average price
 
     Buyout prices in the API are in copper (1 gold = 10000 copper).
@@ -166,62 +166,10 @@ def compute_buyout_stats(auctions: list[dict]) -> dict[int, dict]:
             "min_buyout": buyouts[0] if buyouts else None,
             "median_buyout": int(statistics.median(buyouts)) if buyouts else None,
             "mean_buyout": int(statistics.mean(buyouts)) if buyouts else None,
-            "p10_buyout": int(np.percentile(buyouts, 10)) if buyouts else None,
-            "p90_buyout": int(np.percentile(buyouts, 90)) if buyouts else None,
             "vwap_buyout": int(total_value / max(total_qty, 1)),
         }
 
     return result
-
-
-async def get_previous_metrics(
-    session, connected_realm_id: int
-) -> dict[int, tuple[int, int, float]]:
-    """
-    Get the most recent metrics for each item in this connected realm.
-    Returns: {item_id: (total_quantity, listing_count, demand_proxy_smoothed)}
-    """
-    # Get the most recent snapshot for this realm
-    stmt = (
-        select(Snapshot.id)
-        .where(Snapshot.connected_realm_id == connected_realm_id)
-        .where(Snapshot.status == "success")
-        .order_by(Snapshot.fetched_at.desc())
-        .limit(1)
-    )
-    result = await session.execute(stmt)
-    prev_snapshot_id = result.scalar_one_or_none()
-
-    if prev_snapshot_id is None:
-        return {}
-
-    stmt = select(
-        ItemRealmSnapshotMetric.item_id,
-        ItemRealmSnapshotMetric.total_quantity,
-        ItemRealmSnapshotMetric.listing_count,
-        ItemRealmSnapshotMetric.demand_proxy_smoothed,
-    ).where(ItemRealmSnapshotMetric.snapshot_id == prev_snapshot_id)
-
-    result = await session.execute(stmt)
-    return {
-        row.item_id: (row.total_quantity, row.listing_count, row.demand_proxy_smoothed or 0.0)
-        for row in result
-    }
-
-
-async def get_previous_snapshot_time(
-    session, connected_realm_id: int
-) -> datetime | None:
-    """Get the fetch time of the most recent snapshot for this realm."""
-    stmt = (
-        select(Snapshot.fetched_at)
-        .where(Snapshot.connected_realm_id == connected_realm_id)
-        .where(Snapshot.status == "success")
-        .order_by(Snapshot.fetched_at.desc())
-        .limit(1)
-    )
-    result = await session.execute(stmt)
-    return result.scalar_one_or_none()
 
 
 def compute_demand_proxy(
@@ -237,21 +185,29 @@ def compute_demand_proxy(
     Compute demand proxy via snapshot churn.
 
     Demand proxy = normalized_churn = max(0, Q_{t-1} - Q_t) / max(Q_{t-1}, 1) / max(dt_hours, 0.01)
-
-    If quantity increases (replenishment), churn = 0.
-
     Returns: (demand_proxy_raw, demand_proxy_smoothed)
     """
     eps = 0.01
-
-    # Raw churn (quantity decrease normalized by previous quantity and time)
     churn_qty = max(0, prev_qty - current_qty)
     normalized_churn = churn_qty / max(prev_qty, 1) / max(dt_hours, eps)
-
-    # EWMA smoothing
     smoothed = alpha * normalized_churn + (1 - alpha) * prev_smoothed
-
     return normalized_churn, smoothed
+
+
+def welford_update(
+    count: int, mean: float, m2: float, new_value: float
+) -> tuple[int, float, float]:
+    """Welford's online algorithm for running mean and variance.
+
+    Returns: (new_count, new_mean, new_m2)
+    To recover variance: variance = m2 / max(count - 1, 1)
+    """
+    count += 1
+    delta = new_value - mean
+    mean += delta / count
+    delta2 = new_value - mean
+    m2 += delta * delta2
+    return count, mean, m2
 
 
 async def ingest_realm_auctions(
@@ -262,6 +218,7 @@ async def ingest_realm_auctions(
 ) -> tuple[int, set[int]]:
     """
     Ingest auctions for a single connected realm.
+    UPSERTs aggregated stats into item_realm_aggregates.
 
     Returns: (auction_count, set_of_item_ids_seen)
     """
@@ -295,19 +252,34 @@ async def ingest_realm_auctions(
     item_ids = set(item_stats.keys())
 
     async with session_factory() as session:
-        # Get previous snapshot data for demand proxy
-        prev_metrics = await get_previous_metrics(session, connected_realm_id)
-        prev_time = await get_previous_snapshot_time(session, connected_realm_id)
+        # Get previous aggregate data for this realm to compute demand proxy
+        stmt = (
+            select(ItemRealmAggregate)
+            .where(ItemRealmAggregate.region == settings.region)
+            .where(ItemRealmAggregate.connected_realm_id == connected_realm_id)
+        )
+        result = await session.execute(stmt)
+        existing_aggregates = {row.item_id: row for row in result.scalars().all()}
 
-        dt_hours = 1.0  # default
+        # Get previous snapshot time for this realm
+        prev_snapshot_stmt = (
+            select(Snapshot.fetched_at)
+            .where(Snapshot.connected_realm_id == connected_realm_id)
+            .where(Snapshot.status == "success")
+            .order_by(Snapshot.fetched_at.desc())
+            .limit(1)
+        )
+        prev_result = await session.execute(prev_snapshot_stmt)
+        prev_time = prev_result.scalar_one_or_none()
+
+        dt_hours = 1.0
         if prev_time:
             if prev_time.tzinfo is None:
-                from datetime import timezone as tz
-                prev_time = prev_time.replace(tzinfo=tz.utc)
+                prev_time = prev_time.replace(tzinfo=timezone.utc)
             delta = (now - prev_time).total_seconds() / 3600.0
             dt_hours = max(delta, 0.01)
 
-        # Create snapshot record
+        # Record snapshot metadata
         snapshot = Snapshot(
             region=settings.region,
             connected_realm_id=connected_realm_id,
@@ -316,15 +288,20 @@ async def ingest_realm_auctions(
             status="success",
         )
         session.add(snapshot)
-        await session.flush()  # Get snapshot.id
+        await session.flush()
 
-        # Insert per-item metrics
-        metrics_to_insert = []
+        # Build all aggregate rows in Python first, then batch UPSERT
+        rows_to_upsert = []
         for item_id, stats in item_stats.items():
-            prev = prev_metrics.get(item_id, (0, 0, 0.0))
-            prev_qty, prev_listings, prev_smoothed = prev
+            prev_agg = existing_aggregates.get(item_id)
 
-            raw, smoothed = compute_demand_proxy(
+            # Previous values for demand proxy
+            prev_qty = prev_agg.total_quantity if prev_agg else 0
+            prev_listings = prev_agg.listing_count if prev_agg else 0
+            prev_smoothed = prev_agg.demand_proxy_smoothed if prev_agg else 0.0
+
+            # Compute demand proxy
+            raw_demand, smoothed_demand = compute_demand_proxy(
                 current_qty=stats["total_quantity"],
                 prev_qty=prev_qty,
                 current_listings=stats["listing_count"],
@@ -334,28 +311,90 @@ async def ingest_realm_auctions(
                 alpha=settings.ewma_alpha,
             )
 
-            metrics_to_insert.append({
-                "snapshot_id": snapshot.id,
-                "item_id": item_id,
-                "connected_realm_id": connected_realm_id,
-                "listing_count": stats["listing_count"],
-                "total_quantity": stats["total_quantity"],
-                "min_buyout": stats["min_buyout"],
-                "median_buyout": stats["median_buyout"],
-                "mean_buyout": stats["mean_buyout"],
-                "p10_buyout": stats["p10_buyout"],
-                "p90_buyout": stats["p90_buyout"],
-                "vwap_buyout": stats["vwap_buyout"],
-                "demand_proxy_raw": raw,
-                "demand_proxy_smoothed": smoothed,
+            current_price = float(stats["median_buyout"] or 0)
+
+            # EWMA update
+            prev_ewma_price = prev_agg.ewma_price if prev_agg else current_price
+            prev_ewma_demand = prev_agg.ewma_demand if prev_agg else smoothed_demand
+            new_ewma_price = settings.ewma_alpha * current_price + (1 - settings.ewma_alpha) * (prev_ewma_price or current_price)
+            new_ewma_demand = settings.ewma_alpha * smoothed_demand + (1 - settings.ewma_alpha) * (prev_ewma_demand or smoothed_demand)
+
+            # Welford update
+            prev_count = prev_agg.snapshot_count if prev_agg else 0
+            prev_price_mean = prev_agg.price_mean if prev_agg else 0.0
+            prev_price_m2 = prev_agg.price_m2 if prev_agg else 0.0
+            prev_demand_mean = prev_agg.demand_mean if prev_agg else 0.0
+            prev_demand_m2 = prev_agg.demand_m2 if prev_agg else 0.0
+
+            new_count, new_price_mean, new_price_m2 = welford_update(
+                prev_count, prev_price_mean, prev_price_m2, current_price
+            )
+            _, new_demand_mean, new_demand_m2 = welford_update(
+                prev_count, prev_demand_mean, prev_demand_m2, smoothed_demand
+            )
+
+            rows_to_upsert.append({
+                "p_region": settings.region,
+                "p_cr_id": connected_realm_id,
+                "p_item_id": item_id,
+                "p_listing_count": stats["listing_count"],
+                "p_total_quantity": stats["total_quantity"],
+                "p_min_buyout": stats["min_buyout"],
+                "p_median_buyout": stats["median_buyout"],
+                "p_mean_buyout": stats["mean_buyout"],
+                "p_vwap_buyout": stats["vwap_buyout"],
+                "p_ewma_price": new_ewma_price,
+                "p_ewma_demand": new_ewma_demand,
+                "p_demand_raw": raw_demand,
+                "p_demand_smoothed": smoothed_demand,
+                "p_price_mean": new_price_mean,
+                "p_price_m2": new_price_m2,
+                "p_demand_mean": new_demand_mean,
+                "p_demand_m2": new_demand_m2,
+                "p_snap_count": new_count,
+                "p_updated_at": now,
             })
 
-        # Bulk insert metrics
-        if metrics_to_insert:
-            await session.execute(
-                ItemRealmSnapshotMetric.__table__.insert(),
-                metrics_to_insert,
-            )
+        # Batch UPSERT using raw SQL for performance
+        if rows_to_upsert:
+            upsert_sql = text("""
+                INSERT INTO item_realm_aggregates (
+                    region, connected_realm_id, item_id,
+                    listing_count, total_quantity, min_buyout, median_buyout,
+                    mean_buyout, vwap_buyout, ewma_price, ewma_demand,
+                    demand_proxy_raw, demand_proxy_smoothed,
+                    price_mean, price_m2, demand_mean, demand_m2,
+                    snapshot_count, updated_at
+                ) VALUES (
+                    :p_region, :p_cr_id, :p_item_id,
+                    :p_listing_count, :p_total_quantity, :p_min_buyout, :p_median_buyout,
+                    :p_mean_buyout, :p_vwap_buyout, :p_ewma_price, :p_ewma_demand,
+                    :p_demand_raw, :p_demand_smoothed,
+                    :p_price_mean, :p_price_m2, :p_demand_mean, :p_demand_m2,
+                    :p_snap_count, :p_updated_at
+                )
+                ON CONFLICT (region, connected_realm_id, item_id) DO UPDATE SET
+                    listing_count = EXCLUDED.listing_count,
+                    total_quantity = EXCLUDED.total_quantity,
+                    min_buyout = EXCLUDED.min_buyout,
+                    median_buyout = EXCLUDED.median_buyout,
+                    mean_buyout = EXCLUDED.mean_buyout,
+                    vwap_buyout = EXCLUDED.vwap_buyout,
+                    ewma_price = EXCLUDED.ewma_price,
+                    ewma_demand = EXCLUDED.ewma_demand,
+                    demand_proxy_raw = EXCLUDED.demand_proxy_raw,
+                    demand_proxy_smoothed = EXCLUDED.demand_proxy_smoothed,
+                    price_mean = EXCLUDED.price_mean,
+                    price_m2 = EXCLUDED.price_m2,
+                    demand_mean = EXCLUDED.demand_mean,
+                    demand_m2 = EXCLUDED.demand_m2,
+                    snapshot_count = EXCLUDED.snapshot_count,
+                    updated_at = EXCLUDED.updated_at
+            """)
+            # Execute in batches of 500
+            for batch_start in range(0, len(rows_to_upsert), 500):
+                batch = rows_to_upsert[batch_start:batch_start + 500]
+                await session.execute(upsert_sql, batch)
 
         await session.commit()
 
@@ -368,7 +407,6 @@ async def queue_unresolved_items(session_factory, item_ids: set[int]):
         return
 
     async with session_factory() as session:
-        # Batch upsert -- only insert if not already tracked
         for batch_start in range(0, len(item_ids), 500):
             batch = list(item_ids)[batch_start : batch_start + 500]
             for item_id in batch:
@@ -409,7 +447,7 @@ async def run_ingest():
         connected_realm_ids = await ingest_realms(client, session_factory)
         logger.info("Processing %d connected realms", len(connected_realm_ids))
 
-        # Step 2: Fetch auctions for each realm sequentially (respects rate limits)
+        # Step 2: Fetch auctions for each realm sequentially
         total_auctions = 0
         all_item_ids: set[int] = set()
         success_count = 0
