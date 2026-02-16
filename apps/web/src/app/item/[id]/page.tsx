@@ -13,15 +13,14 @@ import {
     timeAgo,
 } from '@/lib/api';
 import {
-    LineChart,
-    Line,
+    BarChart,
+    Bar,
     XAxis,
     YAxis,
     CartesianGrid,
     Tooltip,
     ResponsiveContainer,
-    Area,
-    AreaChart,
+    Cell,
 } from 'recharts';
 
 // --- Gold Amount Component ---
@@ -214,6 +213,16 @@ export default function ItemDetailPage({ params }: { params: { id: string } }) {
                                 .join(' · ')}
                             {' · '}
                             ID: {item.item_id}
+                            {' · '}
+                            <a
+                                href={`https://www.wowhead.com/item=${item.item_id}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{ color: 'var(--accent-gold)', textDecoration: 'none' }}
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                Wowhead ↗
+                            </a>
                         </div>
                     </div>
                 </div>
@@ -245,102 +254,48 @@ export default function ItemDetailPage({ params }: { params: { id: string } }) {
                 </select>
             </div>
 
-            {/* Sparklines */}
-            <div className="sparkline-container" style={{ marginBottom: 24 }}>
-                {/* Price chart */}
-                <div className="glass-card sparkline-card fade-in">
-                    <h3 style={{ fontSize: '0.92rem', fontWeight: 700, marginBottom: 16, color: 'var(--accent-gold)' }}>
-                        Price by Realm
-                    </h3>
-                    {chartData.length > 0 ? (
-                        <ResponsiveContainer width="100%" height={200}>
-                            <AreaChart data={chartData}>
-                                <defs>
-                                    <linearGradient id="priceGrad" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="var(--accent-gold)" stopOpacity={0.3} />
-                                        <stop offset="95%" stopColor="var(--accent-gold)" stopOpacity={0} />
-                                    </linearGradient>
-                                </defs>
-                                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
-                                <XAxis
-                                    dataKey="realm"
-                                    tick={{ fontSize: 9, fill: 'var(--text-muted)' }}
-                                    tickLine={false}
-                                    angle={-30}
-                                    textAnchor="end"
-                                    height={50}
-                                    interval={Math.max(0, Math.floor(chartData.length / 8) - 1)}
-                                />
-                                <YAxis
-                                    tick={{ fontSize: 10, fill: 'var(--text-muted)' }}
-                                    tickLine={false}
-                                    tickFormatter={(v: number) => formatGoldAxis(v)}
-                                />
-                                <Tooltip content={(props: any) => <SparklineTooltip {...props} format="gold" />} />
-                                <Area
-                                    type="monotone"
-                                    dataKey="price"
-                                    stroke="var(--accent-gold)"
-                                    fill="url(#priceGrad)"
-                                    strokeWidth={2}
-                                    dot={false}
-                                    activeDot={{ r: 4, fill: 'var(--accent-gold)' }}
-                                />
-                            </AreaChart>
-                        </ResponsiveContainer>
-                    ) : (
-                        <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-                            No price data available
-                        </div>
-                    )}
-                </div>
-
-                {/* Demand chart */}
-                <div className="glass-card sparkline-card fade-in">
-                    <h3 style={{ fontSize: '0.92rem', fontWeight: 700, marginBottom: 16, color: 'var(--accent-purple)' }}>
-                        Demand by Realm (Smoothed Churn)
-                    </h3>
-                    {chartData.length > 0 ? (
-                        <ResponsiveContainer width="100%" height={200}>
-                            <AreaChart data={chartData}>
-                                <defs>
-                                    <linearGradient id="demandGrad" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="var(--accent-purple)" stopOpacity={0.3} />
-                                        <stop offset="95%" stopColor="var(--accent-purple)" stopOpacity={0} />
-                                    </linearGradient>
-                                </defs>
-                                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
-                                <XAxis
-                                    dataKey="realm"
-                                    tick={{ fontSize: 9, fill: 'var(--text-muted)' }}
-                                    tickLine={false}
-                                    angle={-30}
-                                    textAnchor="end"
-                                    height={50}
-                                    interval={Math.max(0, Math.floor(chartData.length / 8) - 1)}
-                                />
-                                <YAxis
-                                    tick={{ fontSize: 10, fill: 'var(--text-muted)' }}
-                                    tickLine={false}
-                                />
-                                <Tooltip content={(props: any) => <SparklineTooltip {...props} format="number" />} />
-                                <Area
-                                    type="monotone"
-                                    dataKey="demand"
-                                    stroke="var(--accent-purple)"
-                                    fill="url(#demandGrad)"
-                                    strokeWidth={2}
-                                    dot={false}
-                                    activeDot={{ r: 4, fill: 'var(--accent-purple)' }}
-                                />
-                            </AreaChart>
-                        </ResponsiveContainer>
-                    ) : (
-                        <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-                            No demand data available
-                        </div>
-                    )}
-                </div>
+            {/* Price by Realm — Horizontal Bar Chart */}
+            <div className="glass-card fade-in" style={{ padding: 24, marginBottom: 24 }}>
+                <h3 style={{ fontSize: '0.92rem', fontWeight: 700, marginBottom: 16, color: 'var(--accent-gold)' }}>
+                    Price by Realm
+                </h3>
+                {chartData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={Math.max(200, chartData.length * 32 + 40)}>
+                        <BarChart data={chartData} layout="vertical" margin={{ left: 10, right: 30, top: 5, bottom: 5 }}>
+                            <defs>
+                                <linearGradient id="barGrad" x1="0" y1="0" x2="1" y2="0">
+                                    <stop offset="0%" stopColor="#b8860b" stopOpacity={0.8} />
+                                    <stop offset="100%" stopColor="#ffd700" stopOpacity={1} />
+                                </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" horizontal={false} />
+                            <XAxis
+                                type="number"
+                                tick={{ fontSize: 10, fill: 'var(--text-muted)' }}
+                                tickLine={false}
+                                tickFormatter={(v: number) => formatGoldAxis(v)}
+                            />
+                            <YAxis
+                                type="category"
+                                dataKey="realm"
+                                tick={{ fontSize: 11, fill: 'var(--text-secondary)' }}
+                                tickLine={false}
+                                width={110}
+                            />
+                            <Tooltip content={(props: any) => <SparklineTooltip {...props} format="gold" />} />
+                            <Bar dataKey="price" radius={[0, 4, 4, 0]} barSize={20}>
+                                {chartData.map((entry, idx) => {
+                                    const opacity = 1 - (idx / Math.max(chartData.length, 1)) * 0.5;
+                                    return <Cell key={idx} fill={`rgba(255, 215, 0, ${opacity})`} />;
+                                })}
+                            </Bar>
+                        </BarChart>
+                    </ResponsiveContainer>
+                ) : (
+                    <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+                        No price data available
+                    </div>
+                )}
             </div>
 
             {/* Realm Leaderboard */}
@@ -423,6 +378,6 @@ export default function ItemDetailPage({ params }: { params: { id: string } }) {
                     Timestamps shown in your local timezone.
                 </span>
             </div>
-        </div>
+        </div >
     );
 }

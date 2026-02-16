@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import {
     HotItem,
     HotItemsResponse,
@@ -130,21 +131,52 @@ function sortItems(items: HotItem[], sortKey: SortKey, sortDir: SortDir): HotIte
 
 // --- Main Page ---
 export default function HomePage() {
+    const searchParams = useSearchParams();
+    const router = useRouter();
+
     const [data, setData] = useState<HotItemsResponse | null>(null);
     const [realms, setRealms] = useState<RealmEntry[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    // Filters
-    const [mode, setMode] = useState<'both' | 'demand'>('both');
-    const [minConfidence, setMinConfidence] = useState(0);
-    const [selectedRealm, setSelectedRealm] = useState<number | undefined>();
-    const [searchQuery, setSearchQuery] = useState('');
-    const [limit, setLimit] = useState(50);
+    // Initialize filters from URL search params
+    const [mode, setMode] = useState<'both' | 'demand'>(
+        (searchParams.get('mode') as 'both' | 'demand') || 'both'
+    );
+    const [minConfidence, setMinConfidence] = useState(
+        Number(searchParams.get('conf')) || 0
+    );
+    const [selectedRealm, setSelectedRealm] = useState<number | undefined>(
+        searchParams.get('realm') ? Number(searchParams.get('realm')) : undefined
+    );
+    const [searchQuery, setSearchQuery] = useState(
+        searchParams.get('q') || ''
+    );
+    const [limit, setLimit] = useState(
+        Number(searchParams.get('limit')) || 50
+    );
 
     // Sorting
-    const [sortKey, setSortKey] = useState<SortKey>('hotness');
-    const [sortDir, setSortDir] = useState<SortDir>('desc');
+    const [sortKey, setSortKey] = useState<SortKey>(
+        (searchParams.get('sort') as SortKey) || 'hotness'
+    );
+    const [sortDir, setSortDir] = useState<SortDir>(
+        (searchParams.get('dir') as SortDir) || 'desc'
+    );
+
+    // Sync filter state to URL (so back-navigation preserves state)
+    useEffect(() => {
+        const params = new URLSearchParams();
+        if (mode !== 'both') params.set('mode', mode);
+        if (limit !== 50) params.set('limit', String(limit));
+        if (minConfidence > 0) params.set('conf', String(minConfidence));
+        if (selectedRealm) params.set('realm', String(selectedRealm));
+        if (searchQuery) params.set('q', searchQuery);
+        if (sortKey !== 'hotness') params.set('sort', sortKey);
+        if (sortDir !== 'desc') params.set('dir', sortDir);
+        const qs = params.toString();
+        router.replace(qs ? `/?${qs}` : '/', { scroll: false });
+    }, [mode, limit, minConfidence, selectedRealm, searchQuery, sortKey, sortDir, router]);
 
     // Search debounce
     const searchTimeoutRef = useRef<NodeJS.Timeout>();
@@ -300,7 +332,23 @@ export default function HomePage() {
                 </div>
             )}
 
-            {/* Loading skeleton */}
+            {/* Loading overlay (shown when re-fetching with existing data) */}
+            {loading && data && (
+                <div style={{
+                    position: 'fixed', inset: 0, zIndex: 50,
+                    background: 'rgba(10, 14, 24, 0.6)',
+                    backdropFilter: 'blur(4px)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    flexDirection: 'column', gap: 12,
+                }}>
+                    <div className="loading-spinner" />
+                    <span style={{ color: 'var(--accent-gold)', fontSize: '0.9rem', fontWeight: 600 }}>
+                        Loading items...
+                    </span>
+                </div>
+            )}
+
+            {/* Loading skeleton (first load only) */}
             {loading && !data && (
                 <div className="data-table-wrapper">
                     <table className="data-table">

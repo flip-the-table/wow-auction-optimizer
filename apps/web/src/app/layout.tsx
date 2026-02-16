@@ -6,7 +6,7 @@ export const metadata: Metadata = {
     description:
         'Find high-demand, high-price items across all WoW realms. Powered by real-time auction data analysis.',
     icons: {
-        icon: '/favicon.svg',
+        icon: '/favicon.png',
     },
 };
 
