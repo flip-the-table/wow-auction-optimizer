@@ -69,7 +69,7 @@ export async function GET(
     confidence: r.confidence,
   }));
 
-  // Current stats from aggregates (no per-snapshot history anymore)
+  // Current stats from aggregates (cross-realm comparison)
   let tsRows;
   if (realm !== null) {
     tsRows = await sql`
@@ -119,10 +119,54 @@ export async function GET(
     connected_realm_id: row.connected_realm_id ? Number(row.connected_realm_id) : undefined,
   }));
 
+  // Daily time-series from item_realm_daily (for trend charts)
+  let dailyRows;
+  if (realm !== null) {
+    dailyRows = await sql`
+      SELECT
+        d.date,
+        d.median_price,
+        d.demand_proxy,
+        d.listing_count,
+        d.total_quantity
+      FROM item_realm_daily d
+      WHERE d.item_id = ${itemId}
+        AND d.region = ${region}
+        AND d.connected_realm_id = ${realm}
+      ORDER BY d.date ASC
+      LIMIT ${days}
+    `;
+  } else {
+    // Aggregate across all realms: average price per day
+    dailyRows = await sql`
+      SELECT
+        d.date,
+        AVG(d.median_price)::bigint as median_price,
+        AVG(d.demand_proxy) as demand_proxy,
+        SUM(d.listing_count) as listing_count,
+        SUM(d.total_quantity) as total_quantity
+      FROM item_realm_daily d
+      WHERE d.item_id = ${itemId}
+        AND d.region = ${region}
+      GROUP BY d.date
+      ORDER BY d.date ASC
+      LIMIT ${days}
+    `;
+  }
+
+  const dailyTimeSeries = dailyRows.map((row: any) => ({
+    date: row.date,
+    median_price: Number(row.median_price),
+    demand_proxy: Number(row.demand_proxy),
+    listing_count: Number(row.listing_count),
+    total_quantity: Number(row.total_quantity),
+  }));
+
   return NextResponse.json({
     item: itemInfo,
     realm_leaderboard: realmLeaderboard,
     time_series: timeSeries,
+    daily_time_series: dailyTimeSeries,
     baseline_window_days: days,
     generated_at: new Date().toISOString(),
   });

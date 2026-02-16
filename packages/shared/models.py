@@ -7,6 +7,7 @@ from datetime import datetime
 from sqlalchemy import (
     BigInteger,
     Column,
+    Date,
     DateTime,
     Float,
     Index,
@@ -150,6 +151,34 @@ class ItemRealmAggregate(Base):
             "ix_aggregates_region_realm",
             "region",
             "connected_realm_id",
+        ),
+    )
+
+
+class ItemRealmDaily(Base):
+    """Daily summary per item per realm — one row per (region, realm, item, date).
+
+    Lightweight time-series table for trend visualization.
+    Each hourly ingest UPSERTs into this table with the latest values,
+    so at the end of each day we have the most recent snapshot for that day.
+    """
+    __tablename__ = "item_realm_daily"
+
+    region = Column(String(16), primary_key=True)
+    connected_realm_id = Column(Integer, primary_key=True)
+    item_id = Column(Integer, primary_key=True)
+    date = Column(Date, primary_key=True)
+
+    median_price = Column(BigInteger, nullable=True)
+    demand_proxy = Column(Float, default=0.0)
+    listing_count = Column(Integer, default=0)
+    total_quantity = Column(Integer, default=0)
+
+    __table_args__ = (
+        Index(
+            "ix_daily_item_region",
+            "region",
+            "item_id",
         ),
     )
 

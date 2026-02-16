@@ -292,6 +292,8 @@ async def ingest_realm_auctions(
 
         # Build all aggregate rows in Python first, then batch UPSERT
         rows_to_upsert = []
+        daily_rows = []
+        today = now.date()
         for item_id, stats in item_stats.items():
             prev_agg = existing_aggregates.get(item_id)
 
@@ -355,6 +357,18 @@ async def ingest_realm_auctions(
                 "p_updated_at": now,
             })
 
+            # Daily summary row (latest values for today)
+            daily_rows.append({
+                "p_region": settings.region,
+                "p_cr_id": connected_realm_id,
+                "p_item_id": item_id,
+                "p_date": today,
+                "p_median_price": stats["median_buyout"],
+                "p_demand": smoothed_demand,
+                "p_listing_count": stats["listing_count"],
+                "p_total_quantity": stats["total_quantity"],
+            })
+
         # Batch UPSERT using raw SQL for performance
         if rows_to_upsert:
             upsert_sql = text("""
@@ -395,6 +409,26 @@ async def ingest_realm_auctions(
             for batch_start in range(0, len(rows_to_upsert), 500):
                 batch = rows_to_upsert[batch_start:batch_start + 500]
                 await session.execute(upsert_sql, batch)
+
+        # --- Daily summary UPSERT (lightweight time-series) ---
+        if daily_rows:
+            daily_sql = text("""
+                INSERT INTO item_realm_daily (
+                    region, connected_realm_id, item_id, date,
+                    median_price, demand_proxy, listing_count, total_quantity
+                ) VALUES (
+                    :p_region, :p_cr_id, :p_item_id, :p_date,
+                    :p_median_price, :p_demand, :p_listing_count, :p_total_quantity
+                )
+                ON CONFLICT (region, connected_realm_id, item_id, date) DO UPDATE SET
+                    median_price = EXCLUDED.median_price,
+                    demand_proxy = EXCLUDED.demand_proxy,
+                    listing_count = EXCLUDED.listing_count,
+                    total_quantity = EXCLUDED.total_quantity
+            """)
+            for batch_start in range(0, len(daily_rows), 500):
+                batch = daily_rows[batch_start:batch_start + 500]
+                await session.execute(daily_sql, batch)
 
         await session.commit()
 

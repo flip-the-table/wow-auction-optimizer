@@ -24,6 +24,8 @@ import {
     LabelList,
     AreaChart,
     Area,
+    LineChart,
+    Line,
 } from 'recharts';
 
 // --- Gold Amount Component ---
@@ -110,6 +112,15 @@ export default function ItemDetailPage({ params }: { params: { id: string } }) {
                 quantity: pt.total_quantity,
             };
         });
+
+    // Daily time-series data (for trend charts)
+    const dailyData = (data?.daily_time_series || []).map((pt: any) => ({
+        date: typeof pt.date === 'string' ? pt.date.slice(5) : pt.date, // "MM-DD"
+        price: pt.median_price,
+        priceGold: pt.median_price ? pt.median_price / 10000 : 0,
+        demand: pt.demand_proxy,
+        listings: pt.listing_count,
+    }));
 
     // Gold formatting helper for Y-axis
     const formatGoldAxis = (copper: number) => {
@@ -303,52 +314,61 @@ export default function ItemDetailPage({ params }: { params: { id: string } }) {
                     )}
                 </div>
 
-                {/* Demand by Realm — Area Chart */}
+                {/* Price Trend — Daily Line Chart */}
                 <div className="glass-card sparkline-card fade-in">
-                    <h3 style={{ fontSize: '0.92rem', fontWeight: 700, marginBottom: 12, color: 'var(--accent-purple)' }}>
-                        Demand by Realm (Smoothed Churn)
+                    <h3 style={{ fontSize: '0.92rem', fontWeight: 700, marginBottom: 12, color: 'var(--accent-gold)' }}>
+                        Price Trend (Daily)
                     </h3>
-                    {chartData.length > 0 ? (
+                    {dailyData.length > 1 ? (
                         <ResponsiveContainer width="100%" height={220}>
-                            <AreaChart data={chartData}>
+                            <AreaChart data={dailyData}>
                                 <defs>
-                                    <linearGradient id="demandGrad" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="var(--accent-purple)" stopOpacity={0.3} />
-                                        <stop offset="95%" stopColor="var(--accent-purple)" stopOpacity={0} />
+                                    <linearGradient id="priceGrad" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="var(--accent-gold)" stopOpacity={0.3} />
+                                        <stop offset="95%" stopColor="var(--accent-gold)" stopOpacity={0} />
                                     </linearGradient>
                                 </defs>
                                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
-                                <XAxis
-                                    dataKey="realm"
-                                    tick={{ fontSize: 9, fill: 'var(--text-muted)' }}
-                                    tickLine={false}
-                                    angle={-35}
-                                    textAnchor="end"
-                                    height={55}
-                                    interval={Math.max(0, Math.floor(chartData.length / 10) - 1)}
-                                />
-                                <YAxis
-                                    tick={{ fontSize: 10, fill: 'var(--text-muted)' }}
-                                    tickLine={false}
-                                />
-                                <Tooltip content={(props: any) => <SparklineTooltip {...props} format="number" />} />
-                                <Area
-                                    type="monotone"
-                                    dataKey="demand"
-                                    stroke="var(--accent-purple)"
-                                    fill="url(#demandGrad)"
-                                    strokeWidth={2}
-                                    dot={false}
-                                    activeDot={{ r: 4, fill: 'var(--accent-purple)' }}
-                                />
+                                <XAxis dataKey="date" tick={{ fontSize: 9, fill: 'var(--text-muted)' }} tickLine={false} />
+                                <YAxis tick={{ fontSize: 9, fill: 'var(--text-muted)' }} tickLine={false} tickFormatter={(v: number) => formatGoldAxis(v)} />
+                                <Tooltip content={(props: any) => <SparklineTooltip {...props} format="gold" />} />
+                                <Area type="monotone" dataKey="price" stroke="var(--accent-gold)" fill="url(#priceGrad)" strokeWidth={2} dot={{ r: 3, fill: 'var(--accent-gold)' }} />
                             </AreaChart>
                         </ResponsiveContainer>
                     ) : (
-                        <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-                            No demand data available
+                        <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '0 16px' }}>
+                            Trend data requires 2+ days of ingestion.<br />Check back tomorrow!
                         </div>
                     )}
                 </div>
+            </div>
+
+            {/* Demand Trend — Daily */}
+            <div className="glass-card fade-in" style={{ padding: 24, marginBottom: 24 }}>
+                <h3 style={{ fontSize: '0.92rem', fontWeight: 700, marginBottom: 12, color: 'var(--accent-purple)' }}>
+                    Demand Trend (Daily)
+                </h3>
+                {dailyData.length > 1 ? (
+                    <ResponsiveContainer width="100%" height={220}>
+                        <AreaChart data={dailyData}>
+                            <defs>
+                                <linearGradient id="demandGrad" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="5%" stopColor="var(--accent-purple)" stopOpacity={0.3} />
+                                    <stop offset="95%" stopColor="var(--accent-purple)" stopOpacity={0} />
+                                </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
+                            <XAxis dataKey="date" tick={{ fontSize: 9, fill: 'var(--text-muted)' }} tickLine={false} />
+                            <YAxis tick={{ fontSize: 10, fill: 'var(--text-muted)' }} tickLine={false} />
+                            <Tooltip content={(props: any) => <SparklineTooltip {...props} format="number" />} />
+                            <Area type="monotone" dataKey="demand" stroke="var(--accent-purple)" fill="url(#demandGrad)" strokeWidth={2} dot={{ r: 3, fill: 'var(--accent-purple)' }} />
+                        </AreaChart>
+                    </ResponsiveContainer>
+                ) : (
+                    <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '0 16px' }}>
+                        Trend data requires 2+ days of ingestion.<br />Check back tomorrow!
+                    </div>
+                )}
             </div>
 
             {/* Realm Leaderboard */}
