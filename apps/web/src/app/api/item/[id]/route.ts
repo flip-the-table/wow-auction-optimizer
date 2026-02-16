@@ -38,26 +38,30 @@ export async function GET(
     item_subclass: item?.item_subclass ?? null,
   };
 
-  // Realm leaderboard (top 20 realms by sell suitability)
+  // Realm leaderboard (top 20 realms by sell suitability, falling back to price)
   const lbRows = await sql`
     SELECT
-      f.connected_realm_id,
+      a.connected_realm_id,
       f.price_z,
       f.demand_z,
       f.sell_suitability_score,
-      f.current_price,
+      a.median_buyout as current_price,
       f.confidence,
-      f.total_quantity,
+      a.total_quantity,
       r.name as realm_name
-    FROM item_realm_features_latest f
+    FROM item_realm_aggregates a
+    LEFT JOIN item_realm_features_latest f
+      ON a.item_id = f.item_id
+      AND a.connected_realm_id = f.connected_realm_id
+      AND a.region = f.region
     LEFT JOIN (
       SELECT DISTINCT ON (connected_realm_id) connected_realm_id, name
       FROM realms
       ORDER BY connected_realm_id, name ASC
-    ) r ON f.connected_realm_id = r.connected_realm_id
-    WHERE f.region = ${region}
-      AND f.item_id = ${itemId}
-    ORDER BY f.sell_suitability_score DESC
+    ) r ON a.connected_realm_id = r.connected_realm_id
+    WHERE a.region = ${region}
+      AND a.item_id = ${itemId}
+    ORDER BY COALESCE(f.sell_suitability_score, 0) DESC, a.median_buyout DESC
     LIMIT 20
   `;
 
@@ -67,7 +71,7 @@ export async function GET(
     price_z: r.price_z,
     demand_z: r.demand_z,
     sell_suitability_score: r.sell_suitability_score,
-    current_price: r.current_price,
+    current_price: Number(r.current_price),
     confidence: r.confidence,
     total_quantity: Number(r.total_quantity),
   }));

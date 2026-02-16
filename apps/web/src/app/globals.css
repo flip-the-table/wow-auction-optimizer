@@ -548,3 +548,8 @@ body::before {
 .wh-link:hover .wh-text {
   display: inline;
 }
+
+/* Alt realm row hover — distinct warm amber tint */
+.alt-realm-row:hover {
+  background: rgba(245, 166, 35, 0.08) !important;
+}
