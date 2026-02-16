@@ -164,6 +164,9 @@ function HomePageInner() {
         (searchParams.get('dir') as SortDir) || 'desc'
     );
 
+    // Expandable alternate realms
+    const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set());
+
     // Sync filter state to URL (so back-navigation preserves state)
     useEffect(() => {
         const params = new URLSearchParams();
@@ -310,7 +313,7 @@ function HomePageInner() {
                     style={{ minWidth: 180 }}
                 />
 
-                <button className="btn btn-ghost" onClick={loadData} title="Refresh">
+                <button className="btn btn-ghost" onClick={loadData} title="Re-fetch latest data from the server">
                     ↻ Refresh
                 </button>
             </div>
@@ -354,7 +357,7 @@ function HomePageInner() {
                     <table className="data-table">
                         <thead>
                             <tr>
-                                {['Item', 'Best Realm', 'Price', 'Price Dev', 'Demand Dev', 'Hotness', 'Confidence', 'Updated'].map(
+                                {['Item', 'Best Realm', 'Price', 'Qty', 'Price Dev', 'Demand Dev', 'Hotness', 'Confidence', 'Updated'].map(
                                     (h) => (
                                         <th key={h}>{h}</th>
                                     )
@@ -364,7 +367,7 @@ function HomePageInner() {
                         <tbody>
                             {Array.from({ length: 10 }).map((_, i) => (
                                 <tr key={i}>
-                                    {Array.from({ length: 8 }).map((_, j) => (
+                                    {Array.from({ length: 9 }).map((_, j) => (
                                         <td key={j}>
                                             <div className="skeleton" style={{ height: 18, width: 60 + (i % 5) * 15 }} />
                                         </td>
@@ -382,118 +385,170 @@ function HomePageInner() {
                     <table className="data-table">
                         <thead>
                             <tr>
-                                <th onClick={() => handleSort('name')} className={sortKey === 'name' ? 'sorted' : ''}>
+                                <th onClick={() => handleSort('name')} className={sortKey === 'name' ? 'sorted' : ''} title="Item name and category">
                                     Item <SortIndicator column="name" />
                                 </th>
-                                <th>Best Realm</th>
-                                <th onClick={() => handleSort('price')} className={sortKey === 'price' ? 'sorted' : ''}>
+                                <th title="The realm where this item has the highest sell suitability">Best Realm</th>
+                                <th onClick={() => handleSort('price')} className={sortKey === 'price' ? 'sorted' : ''} title="Current median buyout price on best realm">
                                     Price <SortIndicator column="price" />
                                 </th>
-                                <th onClick={() => handleSort('price_z')} className={sortKey === 'price_z' ? 'sorted' : ''}>
+                                <th title="Total quantity of this item listed on the best realm">Qty</th>
+                                <th onClick={() => handleSort('price_z')} className={sortKey === 'price_z' ? 'sorted' : ''} title="Z-score: how far the current price deviates from its historical mean">
                                     Price Dev <SortIndicator column="price_z" />
                                 </th>
-                                <th onClick={() => handleSort('demand_z')} className={sortKey === 'demand_z' ? 'sorted' : ''}>
+                                <th onClick={() => handleSort('demand_z')} className={sortKey === 'demand_z' ? 'sorted' : ''} title="Z-score: how far the current demand deviates from its historical mean">
                                     Demand Dev <SortIndicator column="demand_z" />
                                 </th>
-                                <th onClick={() => handleSort('hotness')} className={sortKey === 'hotness' ? 'sorted' : ''}>
+                                <th onClick={() => handleSort('hotness')} className={sortKey === 'hotness' ? 'sorted' : ''} title="Combined score = 0.65 × demand_z + 0.35 × price_z. Higher = hotter">
                                     Hotness <SortIndicator column="hotness" />
                                 </th>
-                                <th onClick={() => handleSort('confidence')} className={sortKey === 'confidence' ? 'sorted' : ''}>
+                                <th onClick={() => handleSort('confidence')} className={sortKey === 'confidence' ? 'sorted' : ''} title="Data quality: based on snapshot count, listing volume, and price stability">
                                     Confidence <SortIndicator column="confidence" />
                                 </th>
-                                <th>Updated</th>
+                                <th title="Time since last data update">Updated</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {sortedItems.map((item, idx) => (
-                                <tr
-                                    key={`${item.item.item_id}-${item.best_realm.connected_realm_id}`}
-                                    onClick={() => window.open(`/item/${item.item.item_id}`, '_self')}
-                                    style={{ animationDelay: `${idx * 20}ms` }}
-                                    className="fade-in"
-                                >
-                                    {/* Item cell */}
-                                    <td>
-                                        <div className="item-cell">
-                                            {item.item.icon_url ? (
-                                                <img
-                                                    src={item.item.icon_url}
-                                                    alt=""
-                                                    className="item-icon"
-                                                    loading="lazy"
-                                                />
-                                            ) : (
-                                                <div className="item-icon-placeholder">
-                                                    {item.item.item_id}
+                            {sortedItems.map((item, idx) => {
+                                const isExpanded = expandedItems.has(item.item.item_id);
+                                return (
+                                    <React.Fragment key={`${item.item.item_id}-${item.best_realm.connected_realm_id}`}>
+                                        <tr
+                                            onClick={() => window.open(`/item/${item.item.item_id}`, '_self')}
+                                            style={{ animationDelay: `${idx * 20}ms` }}
+                                            className="fade-in"
+                                        >
+                                            {/* Item cell */}
+                                            <td>
+                                                <div className="item-cell">
+                                                    {item.item.icon_url ? (
+                                                        <img
+                                                            src={item.item.icon_url}
+                                                            alt=""
+                                                            className="item-icon"
+                                                            loading="lazy"
+                                                        />
+                                                    ) : (
+                                                        <div className="item-icon-placeholder">
+                                                            {item.item.item_id}
+                                                        </div>
+                                                    )}
+                                                    <div>
+                                                        <div
+                                                            className="item-name"
+                                                            style={{ color: qualityColor(item.item.quality) }}
+                                                        >
+                                                            {item.item.name ?? `Item #${item.item.item_id}`}
+                                                        </div>
+                                                        {item.item.item_subclass && (
+                                                            <div className="item-id">{item.item.item_subclass}</div>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                            )}
-                                            <div>
-                                                <div
-                                                    className="item-name"
-                                                    style={{ color: qualityColor(item.item.quality) }}
-                                                >
-                                                    {item.item.name ?? `Item #${item.item.item_id}`}
+                                            </td>
+
+                                            {/* Best Realm */}
+                                            <td>
+                                                <div style={{ fontWeight: 500 }}>
+                                                    {item.best_realm.realm_name ?? `Realm ${item.best_realm.connected_realm_id}`}
                                                 </div>
-                                                {item.item.item_subclass && (
-                                                    <div className="item-id">{item.item.item_subclass}</div>
+                                                {item.alternate_realms.length > 0 && (
+                                                    <div
+                                                        style={{ fontSize: '0.72rem', color: 'var(--accent-gold)', cursor: 'pointer', userSelect: 'none' }}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setExpandedItems(prev => {
+                                                                const next = new Set(prev);
+                                                                if (next.has(item.item.item_id)) next.delete(item.item.item_id);
+                                                                else next.add(item.item.item_id);
+                                                                return next;
+                                                            });
+                                                        }}
+                                                    >
+                                                        {isExpanded ? '▾' : '▸'} +{item.alternate_realms.length} alt
+                                                    </div>
                                                 )}
-                                            </div>
-                                        </div>
-                                    </td>
+                                            </td>
 
-                                    {/* Best Realm */}
-                                    <td>
-                                        <div style={{ fontWeight: 500 }}>
-                                            {item.best_realm.realm_name ?? `Realm ${item.best_realm.connected_realm_id}`}
-                                        </div>
-                                        {item.alternate_realms.length > 0 && (
-                                            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                                                +{item.alternate_realms.length} alt
-                                            </div>
-                                        )}
-                                    </td>
+                                            {/* Price */}
+                                            <td>
+                                                <GoldAmount copper={item.current_price} />
+                                            </td>
 
-                                    {/* Price */}
-                                    <td>
-                                        <GoldAmount copper={item.current_price} />
-                                    </td>
+                                            {/* Quantity */}
+                                            <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-secondary)' }}>
+                                                {item.total_quantity != null ? item.total_quantity.toLocaleString() : '—'}
+                                            </td>
 
-                                    {/* Price Deviation */}
-                                    <td>
-                                        <StatBadge value={item.price_z} formatter={formatZ} />
-                                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                                            {formatPct(item.price_pct_diff)}
-                                        </div>
-                                    </td>
+                                            {/* Price Deviation */}
+                                            <td>
+                                                <StatBadge value={item.price_z} formatter={formatZ} />
+                                                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                                                    {formatPct(item.price_pct_diff)}
+                                                </div>
+                                            </td>
 
-                                    {/* Demand Deviation */}
-                                    <td>
-                                        <StatBadge value={item.demand_z} formatter={formatZ} />
-                                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                                            {formatPct(item.demand_pct_diff)}
-                                        </div>
-                                    </td>
+                                            {/* Demand Deviation */}
+                                            <td>
+                                                <StatBadge value={item.demand_z} formatter={formatZ} />
+                                                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                                                    {formatPct(item.demand_pct_diff)}
+                                                </div>
+                                            </td>
 
-                                    {/* Hotness */}
-                                    <td>
-                                        <HotnessDisplay score={item.hotness_score} />
-                                    </td>
+                                            {/* Hotness */}
+                                            <td>
+                                                <HotnessDisplay score={item.hotness_score} />
+                                            </td>
 
-                                    {/* Confidence */}
-                                    <td>
-                                        <ConfidenceBar value={item.confidence} />
-                                    </td>
+                                            {/* Confidence */}
+                                            <td>
+                                                <ConfidenceBar value={item.confidence} />
+                                            </td>
 
-                                    {/* Updated */}
-                                    <td style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
-                                        {timeAgo(item.updated_at)}
-                                    </td>
-                                </tr>
-                            ))}
+                                            {/* Updated */}
+                                            <td style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+                                                {timeAgo(item.updated_at)}
+                                            </td>
+                                        </tr>
+
+                                        {/* Expandable alternate realm rows */}
+                                        {isExpanded && item.alternate_realms.map((alt) => (
+                                            <tr
+                                                key={`alt-${item.item.item_id}-${alt.connected_realm_id}`}
+                                                className="alt-realm-row"
+                                                style={{ background: 'rgba(255,255,255,0.02)' }}
+                                            >
+                                                <td></td>
+                                                <td style={{ paddingLeft: 20, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                                                    {alt.realm_name ?? `Realm ${alt.connected_realm_id}`}
+                                                </td>
+                                                <td>
+                                                    <GoldAmount copper={alt.current_price} />
+                                                </td>
+                                                <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>—</td>
+                                                <td>
+                                                    <StatBadge value={alt.price_z} formatter={formatZ} />
+                                                </td>
+                                                <td>
+                                                    <StatBadge value={alt.demand_z} formatter={formatZ} />
+                                                </td>
+                                                <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                                                    {alt.sell_suitability_score != null ? alt.sell_suitability_score.toFixed(2) : '—'}
+                                                </td>
+                                                <td>
+                                                    <ConfidenceBar value={alt.confidence} />
+                                                </td>
+                                                <td></td>
+                                            </tr>
+                                        ))}
+                                    </React.Fragment>
+                                );
+                            })}
 
                             {sortedItems.length === 0 && !loading && (
                                 <tr>
-                                    <td colSpan={8} style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
+                                    <td colSpan={9} style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
                                         No items found. Try adjusting filters, or run the ingest and compute jobs first.
                                     </td>
                                 </tr>
