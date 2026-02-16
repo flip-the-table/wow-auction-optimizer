@@ -10,9 +10,9 @@ from pydantic import Field
 
 
 class Settings(BaseSettings):
-    # Blizzard OAuth
-    blizzard_client_id: str = Field(..., description="Blizzard API client ID")
-    blizzard_client_secret: str = Field(..., description="Blizzard API client secret")
+    # Blizzard OAuth (optional -- only needed by ingest/meta_resolve, not compute)
+    blizzard_client_id: str = Field("", description="Blizzard API client ID")
+    blizzard_client_secret: str = Field("", description="Blizzard API client secret")
 
     # Region + locale
     region: str = Field("us", description="API region: us or eu")
