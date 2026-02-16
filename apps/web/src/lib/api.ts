@@ -19,6 +19,7 @@ export interface RealmRecommendation {
     sell_suitability_score: number | null;
     current_price: number | null;
     confidence: number | null;
+    total_quantity: number | null;
 }
 
 export interface HotItem {

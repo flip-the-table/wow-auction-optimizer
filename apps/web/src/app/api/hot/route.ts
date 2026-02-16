@@ -123,6 +123,7 @@ export async function GET(request: NextRequest) {
           f.sell_suitability_score,
           f.current_price,
           f.confidence,
+          f.total_quantity,
           r.name as realm_name
         FROM item_realm_features_latest f
         LEFT JOIN (
@@ -155,6 +156,7 @@ export async function GET(request: NextRequest) {
           sell_suitability_score: row.sell_suitability_score,
           current_price: row.current_price,
           confidence: row.confidence,
+          total_quantity: Number(row.total_quantity),
         },
         alternate_realms: altRows.map((alt: any) => ({
           connected_realm_id: alt.connected_realm_id,
@@ -164,6 +166,7 @@ export async function GET(request: NextRequest) {
           sell_suitability_score: alt.sell_suitability_score,
           current_price: alt.current_price,
           confidence: alt.confidence,
+          total_quantity: Number(alt.total_quantity),
         })),
         current_price: Number(row.current_price),
         current_demand: Number(row.current_demand),

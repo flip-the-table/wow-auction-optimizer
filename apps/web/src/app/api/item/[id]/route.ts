@@ -47,6 +47,7 @@ export async function GET(
       f.sell_suitability_score,
       f.current_price,
       f.confidence,
+      f.total_quantity,
       r.name as realm_name
     FROM item_realm_features_latest f
     LEFT JOIN (
@@ -68,6 +69,7 @@ export async function GET(
     sell_suitability_score: r.sell_suitability_score,
     current_price: r.current_price,
     confidence: r.confidence,
+    total_quantity: Number(r.total_quantity),
   }));
 
   // Current stats from aggregates (cross-realm comparison)
