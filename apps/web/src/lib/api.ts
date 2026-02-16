@@ -58,6 +58,13 @@ export interface ItemDetailResponse {
     item: ItemInfo;
     realm_leaderboard: RealmRecommendation[];
     time_series: TimeSeriesPoint[];
+    daily_time_series: {
+        date: string;
+        median_price: number;
+        demand_proxy: number;
+        listing_count: number;
+        total_quantity: number;
+    }[];
     baseline_window_days: number;
     generated_at: string;
 }
