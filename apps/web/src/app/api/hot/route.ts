@@ -4,31 +4,31 @@ import { getDb } from '@/lib/db';
 export const runtime = 'edge';
 
 export async function GET(request: NextRequest) {
-    const sql = getDb();
-    const region = process.env.REGION || 'us';
-    const { searchParams } = new URL(request.url);
+  const sql = getDb();
+  const region = process.env.REGION || 'us';
+  const { searchParams } = new URL(request.url);
 
-    const mode = searchParams.get('mode') || 'both';
-    const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '50'), 1), 500);
-    const minConfidence = parseFloat(searchParams.get('minConfidence') || '0');
-    const realm = searchParams.get('realm') ? parseInt(searchParams.get('realm')!) : null;
-    const search = searchParams.get('search') || null;
+  const mode = searchParams.get('mode') || 'both';
+  const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '50'), 1), 500);
+  const minConfidence = parseFloat(searchParams.get('minConfidence') || '0');
+  const realm = searchParams.get('realm') ? parseInt(searchParams.get('realm')!) : null;
+  const search = searchParams.get('search') || null;
 
-    const sortCol = mode === 'demand' ? 'f.demand_z' : 'f.hotness_score';
+  const sortCol = mode === 'demand' ? 'f.demand_z' : 'f.hotness_score';
 
-    // Build the query dynamically
-    let whereConditions = [`f.region = '${region}'`];
-    if (minConfidence > 0) whereConditions.push(`f.confidence >= ${minConfidence}`);
-    if (realm !== null) whereConditions.push(`f.connected_realm_id = ${realm}`);
-    if (search) whereConditions.push(`i.name ILIKE '%${search.replace(/'/g, "''")}%'`);
+  // Build the query dynamically
+  let whereConditions = [`f.region = '${region}'`];
+  if (minConfidence > 0) whereConditions.push(`f.confidence >= ${minConfidence}`);
+  if (realm !== null) whereConditions.push(`f.connected_realm_id = ${realm}`);
+  if (search) whereConditions.push(`i.name ILIKE '%${search.replace(/'/g, "''")}%'`);
 
-    const whereClause = whereConditions.join(' AND ');
+  const whereClause = whereConditions.join(' AND ');
 
-    let query: string;
+  let query: string;
 
-    if (realm === null) {
-        // Region-wide: best realm per item
-        query = `
+  if (realm === null) {
+    // Region-wide: best realm per item
+    query = `
       WITH best_per_item AS (
         SELECT
           f.item_id,
@@ -65,8 +65,8 @@ export async function GET(request: NextRequest) {
       ORDER BY ${sortCol} DESC
       LIMIT ${limit}
     `;
-    } else {
-        query = `
+  } else {
+    query = `
       SELECT
         f.item_id,
         f.connected_realm_id,
@@ -94,24 +94,24 @@ export async function GET(request: NextRequest) {
       ORDER BY ${sortCol} DESC
       LIMIT ${limit}
     `;
-    }
+  }
 
-    // Use raw SQL since we're building dynamic queries
-    const rows = await sql(query);
+  // Use raw SQL since we're building dynamic queries
+  const rows = await sql(query);
 
-    // For each item, get realm name and alternates
-    const items = await Promise.all(
-        rows.map(async (row: any) => {
-            // Get realm name
-            const realmRows = await sql`
+  // For each item, get realm name and alternates
+  const items = await Promise.all(
+    rows.map(async (row: any) => {
+      // Get realm name
+      const realmRows = await sql`
         SELECT name FROM realms
         WHERE connected_realm_id = ${row.connected_realm_id}
         LIMIT 1
       `;
-            const realmName = realmRows[0]?.name ?? null;
+      const realmName = realmRows[0]?.name ?? null;
 
-            // Get alternate realms (top 5)
-            const altRows = await sql`
+      // Get alternate realms (top 5)
+      const altRows = await sql`
         SELECT
           f.connected_realm_id,
           f.price_z,
@@ -132,54 +132,54 @@ export async function GET(request: NextRequest) {
         LIMIT 5
       `;
 
-            return {
-                item: {
-                    item_id: row.item_id,
-                    name: row.item_name,
-                    quality: row.item_quality,
-                    icon_url: row.icon_url,
-                    level: row.item_level,
-                    item_class: row.item_class,
-                    item_subclass: row.item_subclass,
-                },
-                best_realm: {
-                    connected_realm_id: row.connected_realm_id,
-                    realm_name: realmName,
-                    price_z: row.price_z,
-                    demand_z: row.demand_z,
-                    sell_suitability_score: row.sell_suitability_score,
-                    current_price: row.current_price,
-                    confidence: row.confidence,
-                },
-                alternate_realms: altRows.map((alt: any) => ({
-                    connected_realm_id: alt.connected_realm_id,
-                    realm_name: alt.realm_name,
-                    price_z: alt.price_z,
-                    demand_z: alt.demand_z,
-                    sell_suitability_score: alt.sell_suitability_score,
-                    current_price: alt.current_price,
-                    confidence: alt.confidence,
-                })),
-                current_price: row.current_price,
-                current_demand: row.current_demand,
-                price_pct_diff: row.price_pct_diff,
-                demand_pct_diff: row.demand_pct_diff,
-                price_z: row.price_z,
-                demand_z: row.demand_z,
-                hotness_score: row.hotness_score,
-                confidence: row.confidence,
-                baseline_window_days: row.baseline_window_days ?? 14,
-                updated_at: row.updated_at,
-            };
-        })
-    );
+      return {
+        item: {
+          item_id: row.item_id,
+          name: row.item_name,
+          quality: row.item_quality,
+          icon_url: row.icon_url,
+          level: row.item_level,
+          item_class: row.item_class,
+          item_subclass: row.item_subclass,
+        },
+        best_realm: {
+          connected_realm_id: row.connected_realm_id,
+          realm_name: realmName,
+          price_z: row.price_z,
+          demand_z: row.demand_z,
+          sell_suitability_score: row.sell_suitability_score,
+          current_price: row.current_price,
+          confidence: row.confidence,
+        },
+        alternate_realms: altRows.map((alt: any) => ({
+          connected_realm_id: alt.connected_realm_id,
+          realm_name: alt.realm_name,
+          price_z: alt.price_z,
+          demand_z: alt.demand_z,
+          sell_suitability_score: alt.sell_suitability_score,
+          current_price: alt.current_price,
+          confidence: alt.confidence,
+        })),
+        current_price: Number(row.current_price),
+        current_demand: Number(row.current_demand),
+        price_pct_diff: Number(row.price_pct_diff),
+        demand_pct_diff: Number(row.demand_pct_diff),
+        price_z: Number(row.price_z),
+        demand_z: Number(row.demand_z),
+        hotness_score: Number(row.hotness_score),
+        confidence: Number(row.confidence),
+        baseline_window_days: row.baseline_window_days ?? 14,
+        updated_at: row.updated_at,
+      };
+    })
+  );
 
-    return NextResponse.json({
-        items,
-        total_count: items.length,
-        mode,
-        region,
-        baseline_window_days: parseInt(process.env.BASELINE_WINDOW_DAYS || '14'),
-        generated_at: new Date().toISOString(),
-    });
+  return NextResponse.json({
+    items,
+    total_count: items.length,
+    mode,
+    region,
+    baseline_window_days: parseInt(process.env.BASELINE_WINDOW_DAYS || '14'),
+    generated_at: new Date().toISOString(),
+  });
 }
