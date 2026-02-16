@@ -102,6 +102,7 @@ export interface RealmEntry {
     connected_realm_id: number;
     name: string;
     realm_count: number;
+    all_names: string[];
 }
 
 export async function fetchHotItems(params: {
