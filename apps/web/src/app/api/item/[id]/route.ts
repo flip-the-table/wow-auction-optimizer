@@ -120,47 +120,52 @@ export async function GET(
   }));
 
   // Daily time-series from item_realm_daily (for trend charts)
-  let dailyRows;
-  if (realm !== null) {
-    dailyRows = await sql`
-      SELECT
-        d.date,
-        d.median_price,
-        d.demand_proxy,
-        d.listing_count,
-        d.total_quantity
-      FROM item_realm_daily d
-      WHERE d.item_id = ${itemId}
-        AND d.region = ${region}
-        AND d.connected_realm_id = ${realm}
-      ORDER BY d.date ASC
-      LIMIT ${days}
-    `;
-  } else {
-    // Aggregate across all realms: average price per day
-    dailyRows = await sql`
-      SELECT
-        d.date,
-        AVG(d.median_price)::bigint as median_price,
-        AVG(d.demand_proxy) as demand_proxy,
-        SUM(d.listing_count) as listing_count,
-        SUM(d.total_quantity) as total_quantity
-      FROM item_realm_daily d
-      WHERE d.item_id = ${itemId}
-        AND d.region = ${region}
-      GROUP BY d.date
-      ORDER BY d.date ASC
-      LIMIT ${days}
-    `;
-  }
+  // Wrapped in try-catch because table may not exist yet (created on first ingest)
+  let dailyTimeSeries: any[] = [];
+  try {
+    let dailyRows;
+    if (realm !== null) {
+      dailyRows = await sql`
+        SELECT
+          d.date,
+          d.median_price,
+          d.demand_proxy,
+          d.listing_count,
+          d.total_quantity
+        FROM item_realm_daily d
+        WHERE d.item_id = ${itemId}
+          AND d.region = ${region}
+          AND d.connected_realm_id = ${realm}
+        ORDER BY d.date ASC
+        LIMIT ${days}
+      `;
+    } else {
+      dailyRows = await sql`
+        SELECT
+          d.date,
+          AVG(d.median_price)::bigint as median_price,
+          AVG(d.demand_proxy) as demand_proxy,
+          SUM(d.listing_count) as listing_count,
+          SUM(d.total_quantity) as total_quantity
+        FROM item_realm_daily d
+        WHERE d.item_id = ${itemId}
+          AND d.region = ${region}
+        GROUP BY d.date
+        ORDER BY d.date ASC
+        LIMIT ${days}
+      `;
+    }
 
-  const dailyTimeSeries = dailyRows.map((row: any) => ({
-    date: row.date,
-    median_price: Number(row.median_price),
-    demand_proxy: Number(row.demand_proxy),
-    listing_count: Number(row.listing_count),
-    total_quantity: Number(row.total_quantity),
-  }));
+    dailyTimeSeries = dailyRows.map((row: any) => ({
+      date: row.date,
+      median_price: Number(row.median_price),
+      demand_proxy: Number(row.demand_proxy),
+      listing_count: Number(row.listing_count),
+      total_quantity: Number(row.total_quantity),
+    }));
+  } catch {
+    // Table may not exist yet — return empty array
+  }
 
   return NextResponse.json({
     item: itemInfo,
