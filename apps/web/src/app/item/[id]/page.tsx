@@ -132,6 +132,18 @@ export default function ItemDetailPage({ params }: { params: { id: string } }) {
         return `${copper}c`;
     };
 
+    // Gold formatting helper for text display (e.g. "12g 34s")
+    const formatGoldStr = (copper: number | null) => {
+        if (!copper || copper <= 0) return '0g';
+        const g = Math.floor(copper / 10000);
+        const s = Math.floor((copper % 10000) / 100);
+        if (g >= 1000) return `${(g / 1000).toFixed(g >= 10000 ? 0 : 1)}k gold`;
+        if (g > 0 && s > 0) return `${g}g ${s}s`;
+        if (g > 0) return `${g}g`;
+        if (s > 0) return `${s}s`;
+        return `${copper}c`;
+    };
+
     if (loading) {
         return (
             <div className="page-container">
@@ -268,35 +280,111 @@ export default function ItemDetailPage({ params }: { params: { id: string } }) {
                 </select>
             </div>
 
+            {/* Base Stats */}
+            {data?.base_stats && (
+                <div className="glass-card fade-in" style={{ padding: 20, marginBottom: 20 }}>
+                    <h3 style={{ fontSize: '0.92rem', fontWeight: 700, marginBottom: 14, color: 'var(--accent-gold)' }}>
+                        Base Stats
+                    </h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 16, fontSize: '0.82rem' }}>
+                        {data.base_stats.selected_realm && (
+                            <>
+                                <div>
+                                    <div style={{ color: 'var(--text-muted)', marginBottom: 4 }}>Current Price</div>
+                                    <div style={{ fontWeight: 700, color: 'var(--accent-gold)' }}>{formatGoldStr(data.base_stats.selected_realm.current_price)}</div>
+                                </div>
+                                <div>
+                                    <div style={{ color: 'var(--text-muted)', marginBottom: 4 }}>Mean Price (Realm)</div>
+                                    <div style={{ fontWeight: 600 }}>{formatGoldStr(data.base_stats.selected_realm.mean_price)}</div>
+                                </div>
+                                <div>
+                                    <div style={{ color: 'var(--text-muted)', marginBottom: 4 }}>EWMA Price (Realm)</div>
+                                    <div style={{ fontWeight: 600 }}>{formatGoldStr(data.base_stats.selected_realm.ewma_price)}</div>
+                                </div>
+                                <div>
+                                    <div style={{ color: 'var(--text-muted)', marginBottom: 4 }}>Available (Realm)</div>
+                                    <div style={{ fontWeight: 600 }}>{data.base_stats.selected_realm.available.toLocaleString()} ({data.base_stats.selected_realm.listing_count} listings)</div>
+                                </div>
+                            </>
+                        )}
+                        {data.base_stats.all_realms && (
+                            <>
+                                <div>
+                                    <div style={{ color: 'var(--text-muted)', marginBottom: 4 }}>Median Price (US)</div>
+                                    <div style={{ fontWeight: 600, color: 'var(--accent-emerald)' }}>{formatGoldStr(data.base_stats.all_realms.median_price)}</div>
+                                </div>
+                                <div>
+                                    <div style={{ color: 'var(--text-muted)', marginBottom: 4 }}>Mean Price (US)</div>
+                                    <div style={{ fontWeight: 600, color: 'var(--accent-emerald)' }}>{formatGoldStr(data.base_stats.all_realms.mean_price)}</div>
+                                </div>
+                                <div>
+                                    <div style={{ color: 'var(--text-muted)', marginBottom: 4 }}>Price Range (US)</div>
+                                    <div style={{ fontWeight: 600 }}>{formatGoldStr(data.base_stats.all_realms.min_price)} – {formatGoldStr(data.base_stats.all_realms.max_price)}</div>
+                                </div>
+                                <div>
+                                    <div style={{ color: 'var(--text-muted)', marginBottom: 4 }}>Total Available (US)</div>
+                                    <div style={{ fontWeight: 600 }}>{data.base_stats.all_realms.total_available.toLocaleString()} across {data.base_stats.all_realms.realm_count} realms</div>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+            )}
+
             {/* Charts */}
             <div className="sparkline-container" style={{ marginBottom: 24 }}>
-                {/* Price by Realm — Compact Horizontal Bar Chart */}
+                {/* Price & Quantity by Realm — Combined Horizontal Bar Chart */}
                 <div className="glass-card sparkline-card fade-in">
                     <h3 style={{ fontSize: '0.92rem', fontWeight: 700, marginBottom: 12, color: 'var(--accent-gold)' }}>
-                        Price by Realm
+                        Price & Quantity by Realm
                     </h3>
                     {chartData.length > 0 ? (
-                        <ResponsiveContainer width="100%" height={Math.max(180, chartData.length * 22 + 30)}>
-                            <BarChart data={chartData} layout="vertical" margin={{ left: 0, right: 60, top: 0, bottom: 0 }}>
+                        <ResponsiveContainer width="100%" height={Math.max(200, chartData.length * 28 + 40)}>
+                            <BarChart data={chartData} layout="vertical" margin={{ left: 0, right: 70, top: 0, bottom: 0 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" horizontal={false} />
                                 <XAxis
                                     type="number"
                                     tick={{ fontSize: 9, fill: 'var(--text-muted)' }}
                                     tickLine={false}
                                     tickFormatter={(v: number) => formatGoldAxis(v)}
+                                    xAxisId="price"
+                                />
+                                <XAxis
+                                    type="number"
+                                    tick={false}
+                                    tickLine={false}
+                                    axisLine={false}
+                                    xAxisId="quantity"
+                                    orientation="top"
+                                    hide
                                 />
                                 <YAxis
                                     type="category"
                                     dataKey="realm"
                                     tick={{ fontSize: 10, fill: 'var(--text-secondary)' }}
                                     tickLine={false}
-                                    width={95}
+                                    width={100}
                                 />
-                                <Tooltip content={(props: any) => <SparklineTooltip {...props} format="gold" />} />
-                                <Bar dataKey="price" radius={[0, 3, 3, 0]} barSize={14}>
+                                <Tooltip
+                                    content={(props: any) => {
+                                        const { active, payload } = props;
+                                        if (!active || !payload?.length) return null;
+                                        const d = payload[0]?.payload;
+                                        return (
+                                            <div className="glass-card" style={{ padding: '8px 12px', fontSize: '0.78rem' }}>
+                                                <div style={{ fontWeight: 700, marginBottom: 4 }}>{d?.realm}</div>
+                                                <div style={{ color: 'var(--accent-gold)' }}>Price: {d?.price ? formatGoldStr(d.price) : '—'}</div>
+                                                <div style={{ color: 'var(--accent-purple)' }}>Quantity: {d?.quantity?.toLocaleString() ?? '—'}</div>
+                                                <div style={{ color: 'var(--text-muted)' }}>Listings: {d?.listings?.toLocaleString() ?? '—'}</div>
+                                            </div>
+                                        );
+                                    }}
+                                />
+                                <Bar dataKey="price" radius={[0, 3, 3, 0]} barSize={12} xAxisId="price">
                                     {chartData.map((_entry, idx) => {
-                                        const opacity = 1 - (idx / Math.max(chartData.length, 1)) * 0.5;
-                                        return <Cell key={idx} fill={`rgba(255, 215, 0, ${opacity})`} />;
+                                        const isSelectedRealm = selectedRealm != null && _entry.realm === realmNameMap.get(selectedRealm);
+                                        const opacity = isSelectedRealm ? 1 : 0.6 - (idx / Math.max(chartData.length, 1)) * 0.3;
+                                        return <Cell key={`price-${idx}`} fill={isSelectedRealm ? 'rgba(255, 215, 0, 1)' : `rgba(255, 215, 0, ${opacity})`} stroke={isSelectedRealm ? '#fff' : 'none'} strokeWidth={isSelectedRealm ? 1.5 : 0} strokeDasharray={isSelectedRealm ? '4 2' : 'none'} />;
                                     })}
                                     <LabelList
                                         dataKey="price"
@@ -305,6 +393,12 @@ export default function ItemDetailPage({ params }: { params: { id: string } }) {
                                         style={{ fontSize: 9, fill: 'var(--text-secondary)', fontWeight: 600 }}
                                     />
                                 </Bar>
+                                <Bar dataKey="quantity" radius={[0, 3, 3, 0]} barSize={8} xAxisId="quantity" opacity={0.7}>
+                                    {chartData.map((_entry, idx) => {
+                                        const isSelectedRealm = selectedRealm != null && _entry.realm === realmNameMap.get(selectedRealm);
+                                        return <Cell key={`qty-${idx}`} fill={isSelectedRealm ? 'rgba(168, 85, 247, 1)' : 'rgba(168, 85, 247, 0.45)'} stroke={isSelectedRealm ? '#fff' : 'none'} strokeWidth={isSelectedRealm ? 1 : 0} />;
+                                    })}
+                                </Bar>
                             </BarChart>
                         </ResponsiveContainer>
                     ) : (
@@ -312,6 +406,12 @@ export default function ItemDetailPage({ params }: { params: { id: string } }) {
                             No price data available
                         </div>
                     )}
+                    {/* Chart legend */}
+                    <div style={{ display: 'flex', gap: 16, marginTop: 8, fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                        <span><span style={{ display: 'inline-block', width: 10, height: 10, background: 'var(--accent-gold)', borderRadius: 2, marginRight: 4 }} />Price</span>
+                        <span><span style={{ display: 'inline-block', width: 10, height: 10, background: 'rgba(168, 85, 247, 0.7)', borderRadius: 2, marginRight: 4 }} />Quantity</span>
+                        {selectedRealm != null && <span><span style={{ display: 'inline-block', width: 10, height: 10, border: '1.5px dashed #fff', borderRadius: 2, marginRight: 4 }} />Selected Realm</span>}
+                    </div>
                 </div>
 
                 {/* Price Trend — Daily Line Chart */}
