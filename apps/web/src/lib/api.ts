@@ -33,6 +33,8 @@ export interface HotItem {
     demand_z: number | null;
     hotness_score: number | null;
     confidence: number | null;
+    listing_count: number | null;
+    total_quantity: number | null;
     baseline_window_days: number;
     updated_at: string | null;
 }
@@ -65,6 +67,23 @@ export interface ItemDetailResponse {
         listing_count: number;
         total_quantity: number;
     }[];
+    base_stats: {
+        all_realms: {
+            realm_count: number;
+            mean_price: number;
+            median_price: number;
+            total_available: number;
+            min_price: number;
+            max_price: number;
+        } | null;
+        selected_realm: {
+            current_price: number;
+            available: number;
+            listing_count: number;
+            mean_price: number;
+            ewma_price: number;
+        } | null;
+    };
     baseline_window_days: number;
     generated_at: string;
 }
