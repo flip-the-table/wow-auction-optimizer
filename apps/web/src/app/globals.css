@@ -508,50 +508,43 @@ body::before {
   background: var(--text-muted);
 }
 
-/* Wowhead link — icon by default, expands to text on hover */
+/* Wowhead link — icon by default, text on hover */
 .wh-link {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   text-decoration: none;
   border-radius: 4px;
-  padding: 1px 4px;
-  transition: all 0.2s ease;
-  vertical-align: middle;
-  overflow: hidden;
-  max-width: 22px;
+  padding: 2px 4px;
+  position: relative;
+  min-width: 20px;
+  min-height: 18px;
   color: var(--text-muted);
+  transition: background 0.15s, color 0.15s, padding 0.15s;
 }
 
 .wh-link:hover {
-  max-width: 120px;
   background: rgba(224, 118, 20, 0.85);
   color: #fff;
-  padding: 1px 6px;
+  padding: 2px 6px;
 }
 
 .wh-link .wh-icon {
-  flex-shrink: 0;
-  transition: opacity 0.15s;
+  transition: opacity 0.12s;
 }
 
 .wh-link:hover .wh-icon {
-  opacity: 0;
-  width: 0;
-  overflow: hidden;
+  display: none;
 }
 
 .wh-link .wh-text {
+  display: none;
   font-size: 0.64rem;
   font-weight: 700;
   letter-spacing: 0.03em;
   white-space: nowrap;
-  max-width: 0;
-  opacity: 0;
-  overflow: hidden;
-  transition: max-width 0.2s ease, opacity 0.15s ease;
 }
 
 .wh-link:hover .wh-text {
-  max-width: 80px;
-  opacity: 1;
+  display: inline;
 }
