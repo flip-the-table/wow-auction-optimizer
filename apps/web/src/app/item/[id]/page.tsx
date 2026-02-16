@@ -487,6 +487,7 @@ export default function ItemDetailPage({ params }: { params: { id: string } }) {
                                     <th>#</th>
                                     <th>Realm</th>
                                     <th>Price</th>
+                                    <th>Qty</th>
                                     <th>Price Z</th>
                                     <th>Demand Z</th>
                                     <th>Sell Suitability</th>
@@ -494,39 +495,49 @@ export default function ItemDetailPage({ params }: { params: { id: string } }) {
                                 </tr>
                             </thead>
                             <tbody>
-                                {data.realm_leaderboard.map((r, i) => (
-                                    <tr key={r.connected_realm_id}>
-                                        <td style={{ color: i < 3 ? 'var(--accent-gold)' : 'var(--text-muted)', fontWeight: 700 }}>
-                                            {i + 1}
-                                        </td>
-                                        <td style={{ fontWeight: 500 }}>
-                                            {r.realm_name ?? `Realm ${r.connected_realm_id}`}
-                                        </td>
-                                        <td>
-                                            <GoldAmount copper={r.current_price} />
-                                        </td>
-                                        <td>
-                                            <span className={`stat-badge ${(r.price_z ?? 0) > 0 ? 'positive' : (r.price_z ?? 0) < 0 ? 'negative' : 'neutral'}`}>
-                                                {formatZ(r.price_z)}
-                                            </span>
-                                        </td>
-                                        <td>
-                                            <span className={`stat-badge ${(r.demand_z ?? 0) > 0 ? 'positive' : (r.demand_z ?? 0) < 0 ? 'negative' : 'neutral'}`}>
-                                                {formatZ(r.demand_z)}
-                                            </span>
-                                        </td>
-                                        <td>
-                                            <span style={{ fontWeight: 700, color: (r.sell_suitability_score ?? 0) > 1 ? 'var(--accent-gold)' : 'var(--text-primary)' }}>
-                                                {r.sell_suitability_score?.toFixed(2) ?? '--'}
-                                            </span>
-                                        </td>
-                                        <td>
-                                            <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                                                {((r.confidence ?? 0) * 100).toFixed(0)}%
-                                            </span>
-                                        </td>
-                                    </tr>
-                                ))}
+                                {data.realm_leaderboard.map((r, i) => {
+                                    const connectedRealm = realms.find(rm => rm.connected_realm_id === r.connected_realm_id);
+                                    const realmTooltip = connectedRealm && connectedRealm.realm_count > 1 ? `Connected realms: ${connectedRealm.all_names.join(', ')}` : undefined;
+                                    return (
+                                        <tr key={r.connected_realm_id}>
+                                            <td style={{ color: i < 3 ? 'var(--accent-gold)' : 'var(--text-muted)', fontWeight: 700 }}>
+                                                {i + 1}
+                                            </td>
+                                            <td style={{ fontWeight: 500 }} title={realmTooltip}>
+                                                {r.realm_name ?? `Realm ${r.connected_realm_id}`}
+                                                {connectedRealm && connectedRealm.realm_count > 1 && (
+                                                    <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginLeft: 4 }}>({connectedRealm.realm_count})</span>
+                                                )}
+                                            </td>
+                                            <td>
+                                                <GoldAmount copper={r.current_price} />
+                                            </td>
+                                            <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
+                                                {r.total_quantity != null ? r.total_quantity.toLocaleString() : '—'}
+                                            </td>
+                                            <td>
+                                                <span className={`stat-badge ${(r.price_z ?? 0) > 0 ? 'positive' : (r.price_z ?? 0) < 0 ? 'negative' : 'neutral'}`}>
+                                                    {formatZ(r.price_z)}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <span className={`stat-badge ${(r.demand_z ?? 0) > 0 ? 'positive' : (r.demand_z ?? 0) < 0 ? 'negative' : 'neutral'}`}>
+                                                    {formatZ(r.demand_z)}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <span style={{ fontWeight: 700, color: (r.sell_suitability_score ?? 0) > 1 ? 'var(--accent-gold)' : 'var(--text-primary)' }}>
+                                                    {r.sell_suitability_score?.toFixed(2) ?? '--'}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                                                    {((r.confidence ?? 0) * 100).toFixed(0)}%
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>
