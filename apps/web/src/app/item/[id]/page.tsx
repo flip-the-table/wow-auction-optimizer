@@ -126,7 +126,7 @@ export default function ItemDetailPage({ params }: { params: { id: string } }) {
     const formatGoldAxis = (copper: number) => {
         const g = Math.floor(copper / 10000);
         const s = Math.floor((copper % 10000) / 100);
-        if (g >= 1000) return `${(g / 1000).toFixed(0)}kg`;
+        if (g >= 1000) return `${(g / 1000).toFixed(g >= 10000 ? 0 : 1)}k`;
         if (g > 0) return `${g}g`;
         if (s > 0) return `${s}s`;
         return `${copper}c`;
