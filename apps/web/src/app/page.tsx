@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import {
     HotItem,
@@ -130,7 +130,7 @@ function sortItems(items: HotItem[], sortKey: SortKey, sortDir: SortDir): HotIte
 }
 
 // --- Main Page ---
-export default function HomePage() {
+function HomePageInner() {
     const searchParams = useSearchParams();
     const router = useRouter();
 
@@ -526,5 +526,41 @@ export default function HomePage() {
                 </div>
             )}
         </div>
+    );
+}
+
+export default function HomePage() {
+    return (
+        <Suspense fallback={
+            <div className="page-container">
+                <div className="page-header">
+                    <h1 className="page-title">Hot Items Radar</h1>
+                </div>
+                <div className="data-table-wrapper">
+                    <table className="data-table">
+                        <thead>
+                            <tr>
+                                {['Item', 'Best Realm', 'Price', 'Price Dev', 'Demand Dev', 'Hotness', 'Confidence', 'Updated'].map(
+                                    (h) => <th key={h}>{h}</th>
+                                )}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {Array.from({ length: 10 }).map((_, i) => (
+                                <tr key={i}>
+                                    {Array.from({ length: 8 }).map((_, j) => (
+                                        <td key={j}>
+                                            <div className="skeleton" style={{ height: 18, width: 60 + (i % 5) * 15 }} />
+                                        </td>
+                                    ))}
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }>
+            <HomePageInner />
+        </Suspense>
     );
 }
