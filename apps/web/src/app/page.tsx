@@ -436,11 +436,29 @@ function HomePageInner() {
                                                         </div>
                                                     )}
                                                     <div>
-                                                        <div
-                                                            className="item-name"
-                                                            style={{ color: qualityColor(item.item.quality) }}
-                                                        >
-                                                            {item.item.name ?? `Item #${item.item.item_id}`}
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                            <span
+                                                                className="item-name"
+                                                                style={{ color: qualityColor(item.item.quality) }}
+                                                            >
+                                                                {item.item.name ?? `Item #${item.item.item_id}`}
+                                                            </span>
+                                                            <a
+                                                                href={`https://www.wowhead.com/item=${item.item.item_id}`}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                title="View on Wowhead"
+                                                                onClick={(e) => e.stopPropagation()}
+                                                                style={{ display: 'inline-flex', opacity: 0.5, transition: 'opacity 0.15s' }}
+                                                                onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+                                                                onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.5')}
+                                                            >
+                                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                                                                    <polyline points="15 3 21 3 21 9" />
+                                                                    <line x1="10" y1="14" x2="21" y2="3" />
+                                                                </svg>
+                                                            </a>
                                                         </div>
                                                         {item.item.item_subclass && (
                                                             <div className="item-id">{item.item.item_subclass}</div>
@@ -530,7 +548,8 @@ function HomePageInner() {
                                             <tr
                                                 key={`alt-${item.item.item_id}-${alt.connected_realm_id}`}
                                                 className="alt-realm-row"
-                                                style={{ background: 'rgba(255,255,255,0.02)' }}
+                                                style={{ background: 'rgba(255,255,255,0.02)', cursor: 'pointer' }}
+                                                onClick={() => window.open(`/item/${item.item.item_id}?realm=${alt.connected_realm_id}`, '_self')}
                                             >
                                                 <td></td>
                                                 <td style={{ paddingLeft: 20, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
@@ -539,7 +558,9 @@ function HomePageInner() {
                                                 <td>
                                                     <GoldAmount copper={alt.current_price} />
                                                 </td>
-                                                <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>—</td>
+                                                <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
+                                                    {alt.total_quantity != null ? alt.total_quantity.toLocaleString() : '—'}
+                                                </td>
                                                 <td>
                                                     <StatBadge value={alt.price_z} formatter={formatZ} />
                                                 </td>
