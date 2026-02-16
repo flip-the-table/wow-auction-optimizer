@@ -20,9 +20,12 @@ out/
 .env.local
 .env.*.local
 
-# IDE
+# IDE / AI tools
 .vscode/
 .idea/
+.agents/
+.claude/
+.gemini/
 *.swp
 *.swo
 
