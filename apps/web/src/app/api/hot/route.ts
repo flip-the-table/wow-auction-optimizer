@@ -33,11 +33,19 @@ export async function GET(request: NextRequest) {
     const sortCol = 'f.hotness_score';
 
     // Build WHERE conditions
+    // Note: region is from env var (safe), minConfidence/realm are parsed numbers (safe)
+    // search is user input — sanitize strictly beyond just quote escaping
     let whereConditions = [`f.region = '${region}'`];
     whereConditions.push(`i.item_subclass = 'Decor'`);
     if (minConfidence > 0) whereConditions.push(`f.confidence >= ${minConfidence}`);
     if (realm !== null) whereConditions.push(`f.connected_realm_id = ${realm}`);
-    if (search) whereConditions.push(`i.name ILIKE '%${search.replace(/'/g, "''")}%'`);
+    if (search) {
+      // Strip everything except alphanumeric, spaces, hyphens, apostrophes
+      const sanitized = search.replace(/[^a-zA-Z0-9 '\-]/g, '').replace(/'/g, "''");
+      if (sanitized.length > 0) {
+        whereConditions.push(`i.name ILIKE '%${sanitized}%'`);
+      }
+    }
     const whereClause = whereConditions.join(' AND ');
 
     // --- SINGLE BATCH QUERY: main data + realm names + counts ---

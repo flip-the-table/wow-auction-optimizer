@@ -10,14 +10,19 @@ Cloud-native web app that identifies high-demand, high-price World of Warcraft a
 ## Architecture
 
 ```
-┌─ Netlify ──────────────────────────┐
+┌─ AWS Amplify ──────────────────────┐
 │  Next.js App                       │
 │  ├── Frontend (React pages)        │
 │  └── API Route Handlers            │
-│       └── Neon Serverless Postgres ◄──── GitHub Actions (hourly)
-└────────────────────────────────────┘     ├── ingest.py
-                                          ├── compute.py
-                                          └── meta_resolve.py
+│       ├── AWS RDS (PostgreSQL)     │
+│       └── Upstash Redis (cache)    │
+└────────────────────────────────────┘
+         ▲
+         │  GitHub Actions (hourly)
+         ├── ingest.py
+         ├── compute.py
+         ├── cleanup.py
+         └── meta_resolve.py
 ```
 
 ## Quick Start (Local Dev)
@@ -25,7 +30,7 @@ Cloud-native web app that identifies high-demand, high-price World of Warcraft a
 ### Prerequisites
 - **Python 3.11+** with pip
 - **Node.js 18+** with npm
-- **PostgreSQL 14+** (local install, [Neon.tech](https://neon.tech) free, or Docker)
+- **PostgreSQL 14+** (local install, AWS RDS, or Docker)
 
 ### 1. Setup
 ```bash
@@ -42,7 +47,7 @@ psql -d wow_auction -f migrations/001_initial.sql
 # Option B: Docker (just the database)
 docker-compose up -d postgres
 
-# Option C: Neon.tech (create free project, copy connection string)
+# Option C: AWS RDS (create instance, use connection string)
 ```
 
 ### 3. Install & Run Backend Jobs
@@ -62,34 +67,35 @@ npm run dev
 # Open http://localhost:3000
 ```
 
-> **Note**: For local dev, set `DATABASE_URL` in `apps/web/.env.local` to your Postgres connection string (standard `postgresql://` format for the Neon driver).
+> **Note**: For local dev, the `postgres` npm package reads `DATABASE_URL` from `.env`. It accepts `postgresql+asyncpg://` format (strips the driver suffix automatically).
 
 ---
 
-## Deploy to Netlify (Free/Low Traffic)
+## Deploy to AWS Amplify
 
 | Service | Provider | Plan |
 |---------|----------|------|
-| Frontend + API | **Netlify** | Your credits |
-| Database | [Neon.tech](https://neon.tech) | Free (0.5GB) |
-| Redis | [Upstash](https://upstash.com) | Free (optional) |
-| Background Jobs | **GitHub Actions** | Free (public repos) |
+| Frontend + API | **AWS Amplify** | Free tier |
+| Database | **AWS RDS** (PostgreSQL) | Free tier eligible |
+| Cache | [Upstash](https://upstash.com) Redis | Free (10K req/day) |
+| Background Jobs | **GitHub Actions** | Free (private repos: 2K min/mo) |
 
 ### Steps
 
-1. **Neon Database**: Create a free project → copy the connection string.
+1. **RDS Database**: Create a PostgreSQL instance in AWS RDS → note the connection string.
 
-2. **Netlify Deploy**:
-   - Connect your GitHub repo to Netlify
-   - `netlify.toml` is already configured (base: `apps/web`)
-   - Add environment variables:
-     - `DATABASE_URL` = your Neon connection string (use `postgresql://` format)
+2. **Amplify Deploy**:
+   - Connect your GitHub repo to Amplify
+   - `amplify.yml` is already configured (base: `apps/web`)
+   - Add environment variables in Amplify console:
+     - `DATABASE_URL` = your RDS connection string (`postgresql://` format)
      - `REGION` = `us` (or `eu`)
-     - `BASELINE_WINDOW_DAYS` = `14`
+     - `UPSTASH_REDIS_REST_URL` = your Upstash REST URL
+     - `UPSTASH_REDIS_REST_TOKEN` = your Upstash REST token
 
-3. **Initialize Database**: Run the migration against your Neon DB:
+3. **Initialize Database**: Run the migration against your RDS instance:
    ```bash
-   psql "your-neon-connection-string" -f migrations/001_initial.sql
+   psql "your-rds-connection-string" -f migrations/001_initial.sql
    ```
 
 4. **GitHub Actions Secrets**: In your repo settings, add:
@@ -104,15 +110,10 @@ npm run dev
 ### GitHub Actions Workflow
 
 Already configured in `.github/workflows/jobs.yml`. Runs hourly:
-1. Ingest auction data from Blizzard API
-2. Compute hotness/features
-3. Resolve item metadata
-
----
-
-## GCP Production Deployment (Scale-Up Path)
-
-See `infra/terraform/` for full Terraform configuration (Cloud Run, Cloud SQL, Memorystore, Cloud Scheduler).
+1. Cleanup old data (snapshots > 30 days)
+2. Ingest auction data from Blizzard API
+3. Compute hotness/features
+4. Resolve item metadata
 
 ---
 
@@ -121,7 +122,8 @@ See `infra/terraform/` for full Terraform configuration (Cloud Run, Cloud SQL, M
 ```
 wow-auction-optimizer/
 ├── apps/web/                  Next.js (frontend + API routes)
-│   └── src/app/api/           API Route Handlers (query Neon directly)
+│   └── src/app/api/           API Route Handlers (query RDS directly)
+│   └── src/lib/cache.ts       Upstash Redis cache layer
 ├── services/jobs/             Python background jobs
 ├── packages/shared/           Shared Python (Blizzard client, models)
 ├── migrations/                SQL schema
@@ -129,7 +131,7 @@ wow-auction-optimizer/
 ├── docs/                      Architecture, ADRs, operations
 ├── .agent/workflows/          Agent workflow files
 ├── .github/workflows/         GitHub Actions
-├── netlify.toml               Netlify build config
+├── amplify.yml                AWS Amplify build config
 ├── docker-compose.yml         Local Postgres + Redis (optional)
 └── requirements.txt           Python deps
 ```
@@ -139,6 +141,7 @@ wow-auction-optimizer/
 - **Demand Proxy via Churn** ([ADR](docs/ADR/0001-demand-proxy-via-snapshot-churn.md)): Snapshot churn as demand estimate
 - **Metadata Pipeline** ([ADR](docs/ADR/0002-item-metadata-pipeline.md)): Async resolver with priority queue + circuit breaker
 - **Robust Statistics**: Median/MAD z-scores, not mean/std
+- **Batch Queries + Cache**: N+1 eliminated; Upstash Redis (5-min TTL) for sub-100ms repeat loads
 - **Graceful Degradation**: Missing metadata → show item_id; partial failures → serve stale data
 
 ## License

@@ -9,13 +9,15 @@ All configuration is via environment variables. See `.env.example` for the full 
 |----------|-------------|
 | `BLIZZARD_CLIENT_ID` | Blizzard OAuth client ID |
 | `BLIZZARD_CLIENT_SECRET` | Blizzard OAuth client secret |
-| `DATABASE_URL` | Async Postgres connection (asyncpg) |
-| `DATABASE_URL_SYNC` | Sync Postgres connection (psycopg2) |
+| `DATABASE_URL` | Async Postgres connection (asyncpg format for Python jobs) |
+| `DATABASE_URL_SYNC` | Sync Postgres connection (standard format) |
 
 ### Optional
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `REDIS_URL` | `redis://localhost:6379/0` | Redis connection (omit for in-memory) |
+| `UPSTASH_REDIS_REST_URL` | *(none)* | Upstash Redis REST URL (enables API caching) |
+| `UPSTASH_REDIS_REST_TOKEN` | *(none)* | Upstash Redis REST token |
+| `REDIS_URL` | `redis://localhost:6379/0` | Redis connection for Python jobs |
 | `REGION` | `us` | Blizzard region: us or eu |
 | `LOCALE` | `en_US` | Item name locale |
 | `INGEST_INTERVAL_MINUTES` | `60` | How often to run ingest |
@@ -25,6 +27,22 @@ All configuration is via environment variables. See `.env.example` for the full 
 | `MIN_TOTAL_QUANTITY` | `50` | Liquidity filter |
 | `EWMA_ALPHA` | `0.3` | Demand smoothing factor |
 | `BASELINE_WINDOW_DAYS` | `14` | Rolling baseline window |
+
+## Secrets Management
+
+### Where Secrets Live
+
+| Context | Mechanism | Secrets |
+|---------|-----------|---------|
+| **Local dev** | `.env` file (gitignored) | All vars |
+| **GitHub Actions** | Repo secrets (`gh secret set`) | `DATABASE_URL`, `DATABASE_URL_SYNC`, `BLIZZARD_CLIENT_ID`, `BLIZZARD_CLIENT_SECRET`, `REDIS_URL` |
+| **AWS Amplify** | Amplify environment variables | `DATABASE_URL`, `REGION`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` |
+
+### Security Notes
+- `.env` is in `.gitignore` — never committed
+- `.env.example` uses placeholder values only
+- API routes are server-side only (Next.js Route Handlers) — credentials never reach the browser
+- Repo is **private** — source code not publicly visible
 
 ## Running Locally
 
@@ -42,10 +60,7 @@ python -m services.jobs.ingest
 python -m services.jobs.compute
 python -m services.jobs.meta_resolve
 
-# 4. Start API
-python -m services.api.main
-
-# 5. Start frontend
+# 4. Start frontend
 cd apps/web && npm install && npm run dev
 ```
 
@@ -58,6 +73,12 @@ python -m services.jobs.ingest
 ```
 
 ## Running Jobs
+
+### Cleanup
+```bash
+python -m services.jobs.cleanup
+```
+Prunes old snapshots (>30 days) to keep database size manageable. Runs automatically before ingest in GitHub Actions.
 
 ### Ingest
 ```bash
@@ -81,7 +102,13 @@ Fetches item names and icons from Blizzard. Prioritizes hot items. Can be run in
 
 ### Check health
 ```bash
-curl http://localhost:8000/api/health | python -m json.tool
+curl http://localhost:3000/api/health | python -m json.tool
+```
+
+### Check cache status
+Look for `X-Cache: HIT` or `X-Cache: MISS` in response headers:
+```bash
+curl -I http://localhost:3000/api/hot
 ```
 
 ### Check data freshness
@@ -124,4 +151,11 @@ python -m services.jobs.meta_resolve
 # Delete stale features and recompute
 psql -d wow_auction -c "DELETE FROM item_realm_features_latest;"
 python -m services.jobs.compute
+```
+
+### Flush Redis cache
+If stale data is being served and you need an immediate refresh:
+```bash
+# Via Upstash dashboard, or:
+# The cache uses 5-min TTL, so waiting 5 minutes also works.
 ```
