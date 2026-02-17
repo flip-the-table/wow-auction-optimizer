@@ -225,6 +225,10 @@ body::before {
   align-items: center;
   flex-wrap: wrap;
   padding: 16px 0;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: var(--bg-base);
 }
 
 .filter-select,
@@ -409,40 +413,62 @@ body::before {
 }
 
 .title-spin-in {
-  animation: spinIn 2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: spinInRotate 2s linear forwards, spinInScale 2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
-@keyframes spinIn {
+@keyframes spinInRotate {
   0% {
-    opacity: 0;
-    transform: rotate(-2520deg) scale(0.1);
+    transform: rotate(-2520deg);
   }
 
-  20% {
-    opacity: 1;
-    transform: rotate(-1800deg) scale(0.3);
-  }
-
-  50% {
-    transform: rotate(-720deg) scale(0.6);
-  }
-
-  75% {
-    transform: rotate(-180deg) scale(0.9);
+  85% {
+    transform: rotate(0deg);
   }
 
   90% {
-    transform: rotate(15deg) scale(1.08);
+    transform: rotate(12deg);
   }
 
   95% {
-    transform: rotate(-5deg) scale(0.98);
+    transform: rotate(-4deg);
+  }
+
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes spinInScale {
+  0% {
+    opacity: 0;
+    scale: 0.1;
+  }
+
+  15% {
+    opacity: 1;
+    scale: 0.2;
+  }
+
+  50% {
+    scale: 0.5;
+  }
+
+  85% {
+    scale: 1.0;
+  }
+
+  92% {
+    scale: 1.06;
   }
 
   100% {
     opacity: 1;
-    transform: rotate(0deg) scale(1);
+    scale: 1;
   }
+}
+
+.table-icon {
+  filter: drop-shadow(0 0 4px var(--accent-gold));
 }
 
 .page-subtitle {

@@ -256,11 +256,11 @@ function HomePageInner() {
             <div className="page-header">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                     <img src="/tableflip.gif" alt="Table flip!" style={{ height: '7.2rem', borderRadius: '4px' }} />
-                    <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignSelf: 'center', paddingTop: '0.5rem' }}>
                         <h1
                             className={`page-title ${!titleVisible ? 'title-hidden' : 'title-spin-in'}`}
                         >
-                            Flip the Table
+                            Flip the <svg className="table-icon" viewBox="0 0 24 28" width="22" height="26" style={{ display: 'inline-block', verticalAlign: '-2px', marginRight: '1px' }}><rect x="2" y="2" width="20" height="4" rx="1.5" fill="currentColor" /><rect x="4" y="6" width="3" height="16" rx="1" fill="currentColor" /><rect x="17" y="6" width="3" height="16" rx="1" fill="currentColor" /><rect x="3" y="20" width="18" height="3" rx="1" fill="currentColor" opacity="0.5" /></svg>able
                         </h1>
                         {titleVisible && data && (
                             <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '4px' }}>
