@@ -1,5 +1,5 @@
 // API client and shared types for the WoW Auction Optimizer frontend
-// API routes are same-origin (Next.js API Route Handlers on Netlify)
+// API routes are same-origin (Next.js API Route Handlers on AWS Amplify)
 
 export interface ItemInfo {
     item_id: number;

@@ -6,6 +6,9 @@ applications:
         preBuild:
           commands:
             - npm install
+            # Write runtime env vars to .env.production so Next.js SSR can access them
+            - echo "DATABASE_URL=$DATABASE_URL" >> .env.production
+            - echo "REGION=$REGION" >> .env.production
         build:
           commands:
             - npm run build
