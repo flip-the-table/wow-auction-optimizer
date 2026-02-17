@@ -255,12 +255,12 @@ function HomePageInner() {
             {/* Header */}
             <div className="page-header">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                    <img src="/tableflip.gif" alt="Table flip!" style={{ height: '7.2rem', borderRadius: '4px' }} />
+                    <img src="/tableflip.gif" alt="Table flip!" style={{ height: '14.4rem', borderRadius: '4px' }} />
                     <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignSelf: 'center', paddingTop: '1.5rem' }}>
                         <h1
                             className={`page-title ${!titleVisible ? 'title-hidden' : 'title-spin-in'}`}
                         >
-                            Flip the <svg className="table-icon" viewBox="0 0 28 24" width="26" height="22" style={{ display: 'inline-block', verticalAlign: '-3px', marginRight: '1px' }}><rect x="1" y="1" width="26" height="3.5" rx="1.5" fill="currentColor" /><rect x="3" y="4.5" width="2.5" height="14" rx="0.8" fill="currentColor" /><rect x="22.5" y="4.5" width="2.5" height="14" rx="0.8" fill="currentColor" /><rect x="10" y="4.5" width="2" height="14" rx="0.8" fill="currentColor" opacity="0.5" /><rect x="16" y="4.5" width="2" height="14" rx="0.8" fill="currentColor" opacity="0.5" /><rect x="3" y="18.5" width="22" height="2.5" rx="0.8" fill="currentColor" opacity="0.4" /></svg>able
+                            Flip the <svg className="table-icon" viewBox="0 0 30 26" width="28" height="24" style={{ display: 'inline-block', verticalAlign: '-4px', marginRight: '1px' }}><polygon points="6,1 28,1 24,6 2,6" fill="currentColor" opacity="0.95" /><polygon points="2,6 6,1 6,3 2,7.5" fill="currentColor" opacity="0.6" /><rect x="4" y="6" width="2.5" height="14" rx="0.5" fill="currentColor" opacity="0.85" /><rect x="21" y="6" width="2.5" height="14" rx="0.5" fill="currentColor" opacity="0.85" /><rect x="1" y="20" width="8" height="2.5" rx="1" fill="currentColor" opacity="0.7" /><rect x="18" y="20" width="8" height="2.5" rx="1" fill="currentColor" opacity="0.7" /></svg>able
                         </h1>
                         {titleVisible && data && (
                             <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '4px' }}>
