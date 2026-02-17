@@ -22,12 +22,15 @@ export interface RealmRecommendation {
     current_price: number | null;
     confidence: number | null;
     total_quantity: number | null;
+    has_features: boolean;
 }
 
 export interface HotItem {
     item: ItemInfo;
     best_realm: RealmRecommendation;
     alternate_realms: RealmRecommendation[];
+    total_realm_count: number;
+    hot_realm_count: number;
     current_price: number | null;
     current_demand: number | null;
     price_pct_diff: number | null;

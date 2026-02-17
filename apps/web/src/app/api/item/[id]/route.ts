@@ -96,12 +96,11 @@ export async function GET(
         AND a.connected_realm_id NOT IN (SELECT connected_realm_id FROM featured)
     )
     SELECT * FROM (
-      SELECT * FROM featured
+      SELECT *, true as has_features FROM featured
       UNION ALL
-      SELECT * FROM aggregates_only
+      SELECT *, false as has_features FROM aggregates_only
     ) combined
     ORDER BY COALESCE(sell_suitability_score, -999) DESC, current_price DESC
-    LIMIT 30
   `;
 
   const realmLeaderboard = lbRows.map((r: any) => ({
@@ -115,6 +114,7 @@ export async function GET(
     current_price: Number(r.current_price),
     confidence: r.confidence != null ? Number(r.confidence) : null,
     total_quantity: Number(r.total_quantity),
+    has_features: r.has_features ?? false,
   }));
 
   // Current stats from aggregates (cross-realm comparison)

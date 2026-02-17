@@ -553,3 +553,36 @@ body::before {
 .alt-realm-row:hover {
   background: rgba(245, 166, 35, 0.08) !important;
 }
+
+/* Focus-visible for keyboard accessibility */
+.data-table th:focus-visible,
+.btn:focus-visible,
+.filter-select:focus-visible,
+.filter-input:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--accent-gold);
+  outline-offset: 2px;
+}
+
+/* Row hover left-border accent for clickable rows */
+.data-table tbody tr {
+  border-left: 3px solid transparent;
+  transition: background-color 0.15s ease, border-left-color 0.15s ease;
+}
+
+.data-table tbody tr:hover {
+  border-left-color: var(--accent-gold);
+}
+
+/* Smooth button hover for expand/collapse */
+button:hover {
+  filter: brightness(1.1);
+}
+
+/* Sort indicator always visible but dim on non-sorted columns */
+.data-table th::after {
+  content: '';
+  display: inline-block;
+  width: 0;
+  margin-left: 0;
+}

@@ -467,30 +467,44 @@ function HomePageInner() {
                                                         <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginLeft: 4 }}>({connectedRealm.realm_count})</span>
                                                     )}
                                                 </div>
-                                                {item.alternate_realms.length > 0 && (
-                                                    <button
-                                                        style={{
-                                                            display: 'inline-flex', alignItems: 'center', gap: 4,
-                                                            fontSize: '0.78rem', fontWeight: 600, color: 'var(--accent-gold)',
-                                                            background: isExpanded ? 'rgba(255, 215, 0, 0.12)' : 'rgba(255, 215, 0, 0.06)',
-                                                            border: '1px solid rgba(255, 215, 0, 0.25)', borderRadius: 6,
-                                                            padding: '3px 10px', cursor: 'pointer', userSelect: 'none',
-                                                            marginTop: 4, transition: 'all 0.15s ease',
-                                                        }}
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setExpandedItems(prev => {
-                                                                const next = new Set(prev);
-                                                                if (next.has(item.item.item_id)) next.delete(item.item.item_id);
-                                                                else next.add(item.item.item_id);
-                                                                return next;
-                                                            });
-                                                        }}
-                                                    >
-                                                        <span style={{ fontSize: '0.9rem', lineHeight: 1 }}>{isExpanded ? '▾' : '▸'}</span>
-                                                        +{item.alternate_realms.length} realms
-                                                    </button>
-                                                )}
+                                                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginTop: 4 }}>
+                                                    {item.alternate_realms.length > 0 && (
+                                                        <button
+                                                            style={{
+                                                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                                                                fontSize: '0.72rem', fontWeight: 600, color: 'var(--accent-gold)',
+                                                                background: isExpanded ? 'rgba(255, 215, 0, 0.12)' : 'rgba(255, 215, 0, 0.06)',
+                                                                border: '1px solid rgba(255, 215, 0, 0.25)', borderRadius: 6,
+                                                                padding: '2px 8px', cursor: 'pointer', userSelect: 'none',
+                                                                transition: 'all 0.15s ease',
+                                                            }}
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setExpandedItems(prev => {
+                                                                    const next = new Set(prev);
+                                                                    if (next.has(item.item.item_id)) next.delete(item.item.item_id);
+                                                                    else next.add(item.item.item_id);
+                                                                    return next;
+                                                                });
+                                                            }}
+                                                        >
+                                                            <span style={{ fontSize: '0.8rem', lineHeight: 1 }}>{isExpanded ? '▾' : '▸'}</span>
+                                                            +{item.alternate_realms.length} hot realms
+                                                        </button>
+                                                    )}
+                                                    {item.total_realm_count > 0 && (
+                                                        <span
+                                                            style={{
+                                                                fontSize: '0.68rem', color: 'var(--text-muted)',
+                                                                cursor: 'pointer',
+                                                            }}
+                                                            onClick={(e) => { e.stopPropagation(); window.open(`/item/${item.item.item_id}`, '_self'); }}
+                                                            title={`View all ${item.total_realm_count} realms on item detail page`}
+                                                        >
+                                                            {item.total_realm_count} total realms →
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </td>
 
                                             {/* Price */}

@@ -105,7 +105,7 @@ export async function GET(request: NextRequest) {
     // Use sql.unsafe() for dynamic queries (query is built with string interpolation)
     const rows = await sql.unsafe(query);
 
-    // For each item, get realm name and alternates
+    // For each item, get realm name, alternates, and total realm count
     const items = await Promise.all(
       rows.map(async (row: any) => {
         // Get realm name
@@ -116,7 +116,7 @@ export async function GET(request: NextRequest) {
       `;
         const realmName = realmRows[0]?.name ?? null;
 
-        // Get alternate realms (top 5)
+        // Get alternate realms (top 5 hot realms)
         const altRows = await sql`
         SELECT
           f.connected_realm_id,
@@ -139,6 +139,18 @@ export async function GET(request: NextRequest) {
         ORDER BY f.sell_suitability_score DESC
         LIMIT 5
       `;
+
+        // Get total realm count (all realms that have this item, from aggregates)
+        const countRows = await sql`
+        SELECT
+          COUNT(DISTINCT connected_realm_id) as total_count,
+          (SELECT COUNT(DISTINCT connected_realm_id) FROM item_realm_features_latest
+           WHERE item_id = ${row.item_id} AND region = ${region}) as hot_count
+        FROM item_realm_aggregates
+        WHERE item_id = ${row.item_id} AND region = ${region}
+      `;
+        const totalRealmCount = Number(countRows[0]?.total_count ?? 0);
+        const hotRealmCount = Number(countRows[0]?.hot_count ?? 0);
 
         return {
           item: {
@@ -170,6 +182,8 @@ export async function GET(request: NextRequest) {
             confidence: alt.confidence,
             total_quantity: Number(alt.total_quantity),
           })),
+          total_realm_count: totalRealmCount,
+          hot_realm_count: hotRealmCount,
           current_price: Number(row.current_price),
           current_demand: Number(row.current_demand),
           price_pct_diff: Number(row.price_pct_diff),

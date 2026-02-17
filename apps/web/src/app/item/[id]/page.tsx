@@ -84,6 +84,7 @@ export default function ItemDetailPage({ params }: { params: { id: string } }) {
     const [realms, setRealms] = useState<RealmEntry[]>([]);
     const [lbSortKey, setLbSortKey] = useState<string>('sell_suitability_score');
     const [lbSortDir, setLbSortDir] = useState<'asc' | 'desc'>('desc');
+    const [showAllRealms, setShowAllRealms] = useState(false);
 
     const toggleLbSort = (key: string) => {
         if (lbSortKey === key) {
@@ -102,6 +103,9 @@ export default function ItemDetailPage({ params }: { params: { id: string } }) {
         if (bv == null) return -1;
         return lbSortDir === 'asc' ? av - bv : bv - av;
     }) : [];
+
+    const hotRealms = sortedLeaderboard.filter(r => r.has_features);
+    const nonHotRealms = sortedLeaderboard.filter(r => !r.has_features);
 
     useEffect(() => {
         fetchRealms().then(setRealms).catch(() => { });
@@ -356,9 +360,14 @@ export default function ItemDetailPage({ params }: { params: { id: string } }) {
                 {/* Price & Quantity by Realm — Combined Horizontal Bar Chart */}
                 <div className="glass-card sparkline-card fade-in">
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                        <h3 style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--accent-gold)', margin: 0 }}>
-                            Price & Quantity by Realm
-                        </h3>
+                        <div>
+                            <h3 style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--accent-gold)', margin: 0 }}>
+                                Price & Quantity by Realm
+                            </h3>
+                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                                Top {chartData.length} realms by price{data?.base_stats?.all_realms ? ` of ${data.base_stats.all_realms.realm_count} total` : ''}
+                            </span>
+                        </div>
                         {/* Chart legend — at top for immediate context */}
                         <div style={{ display: 'flex', gap: 14, fontSize: '0.72rem', color: 'var(--text-muted)' }}>
                             <span><span style={{ display: 'inline-block', width: 10, height: 10, background: 'var(--accent-gold)', borderRadius: 2, marginRight: 4 }} />Price</span>
@@ -496,9 +505,15 @@ export default function ItemDetailPage({ params }: { params: { id: string } }) {
 
             {/* Realm Leaderboard */}
             <div className="glass-card fade-in" style={{ padding: 24 }}>
-                <h3 style={{ fontSize: '0.92rem', fontWeight: 700, marginBottom: 16 }}>
-                    Realm Leaderboard — Best Places to Sell
-                </h3>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
+                    <h3 style={{ fontSize: '0.92rem', fontWeight: 700, margin: 0 }}>
+                        Realm Leaderboard — Best Places to Sell
+                    </h3>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                        {hotRealms.length > 0 && <><span style={{ color: 'var(--accent-gold)' }}>{hotRealms.length} sizzle</span> · </>}
+                        {nonHotRealms.length} price-only · {sortedLeaderboard.length} total
+                    </span>
+                </div>
                 {sortedLeaderboard.length > 0 ? (
                     <div className="data-table-wrapper" style={{ border: 'none' }}>
                         <table className="data-table">
@@ -521,7 +536,7 @@ export default function ItemDetailPage({ params }: { params: { id: string } }) {
                                         >
                                             {col.label}
                                             {lbSortKey === col.key && (
-                                                <span style={{ marginLeft: 4, fontSize: '0.7rem' }}>
+                                                <span style={{ marginLeft: 4, fontSize: '0.7rem', color: 'var(--accent-gold)' }}>
                                                     {lbSortDir === 'asc' ? '▲' : '▼'}
                                                 </span>
                                             )}
@@ -530,7 +545,8 @@ export default function ItemDetailPage({ params }: { params: { id: string } }) {
                                 </tr>
                             </thead>
                             <tbody>
-                                {sortedLeaderboard.map((r, i) => {
+                                {/* Hot realms (with sizzle data) */}
+                                {hotRealms.map((r, i) => {
                                     const realmTooltip = r.connected_realm_names && r.realm_count > 1
                                         ? `Connected realms: ${r.connected_realm_names}`
                                         : undefined;
@@ -574,6 +590,74 @@ export default function ItemDetailPage({ params }: { params: { id: string } }) {
                                         </tr>
                                     );
                                 })}
+
+                                {/* Divider + expand button for non-hot realms */}
+                                {nonHotRealms.length > 0 && !showAllRealms && (
+                                    <tr>
+                                        <td colSpan={8} style={{ padding: '8px 14px', textAlign: 'center' }}>
+                                            <button
+                                                onClick={() => setShowAllRealms(true)}
+                                                style={{
+                                                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                                                    fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)',
+                                                    background: 'rgba(255,255,255,0.04)',
+                                                    border: '1px solid var(--border-subtle)', borderRadius: 8,
+                                                    padding: '6px 16px', cursor: 'pointer',
+                                                    transition: 'all 0.15s ease',
+                                                }}
+                                            >
+                                                ▸ Show {nonHotRealms.length} more realms (price data only)
+                                            </button>
+                                        </td>
+                                    </tr>
+                                )}
+
+                                {/* Non-hot realms (price data only, muted) */}
+                                {showAllRealms && nonHotRealms.map((r, i) => {
+                                    const realmTooltip = r.connected_realm_names && r.realm_count > 1
+                                        ? `Connected realms: ${r.connected_realm_names}`
+                                        : undefined;
+                                    return (
+                                        <tr key={r.connected_realm_id} style={{ opacity: 0.65 }}>
+                                            <td style={{ color: 'var(--text-muted)', fontWeight: 600 }}>
+                                                {hotRealms.length + i + 1}
+                                            </td>
+                                            <td style={{ fontWeight: 500 }} title={realmTooltip}>
+                                                {r.realm_name ?? `Realm ${r.connected_realm_id}`}
+                                                {r.realm_count > 1 && (
+                                                    <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginLeft: 4 }}>({r.realm_count})</span>
+                                                )}
+                                            </td>
+                                            <td>
+                                                <GoldAmount copper={r.current_price} />
+                                            </td>
+                                            <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
+                                                {r.total_quantity != null ? r.total_quantity.toLocaleString() : '—'}
+                                            </td>
+                                            <td><span className="stat-badge neutral">--</span></td>
+                                            <td><span className="stat-badge neutral">--</span></td>
+                                            <td><span style={{ color: 'var(--text-muted)' }}>--</span></td>
+                                            <td><span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>--</span></td>
+                                        </tr>
+                                    );
+                                })}
+
+                                {showAllRealms && nonHotRealms.length > 0 && (
+                                    <tr>
+                                        <td colSpan={8} style={{ padding: '8px 14px', textAlign: 'center' }}>
+                                            <button
+                                                onClick={() => setShowAllRealms(false)}
+                                                style={{
+                                                    fontSize: '0.72rem', color: 'var(--text-muted)',
+                                                    background: 'none', border: 'none', cursor: 'pointer',
+                                                    padding: '4px 8px',
+                                                }}
+                                            >
+                                                ▴ Collapse price-only realms
+                                            </button>
+                                        </td>
+                                    </tr>
+                                )}
                             </tbody>
                         </table>
                     </div>
