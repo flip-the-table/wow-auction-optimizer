@@ -32,7 +32,7 @@ export interface HotItem {
     demand_pct_diff: number | null;
     price_z: number | null;
     demand_z: number | null;
-    hotness_score: number | null;
+    sizzle_score: number | null;
     confidence: number | null;
     listing_count: number | null;
     total_quantity: number | null;

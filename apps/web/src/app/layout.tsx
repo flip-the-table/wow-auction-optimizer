@@ -2,9 +2,9 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-    title: 'WoW Auction Optimizer -- Hot Items Radar',
+    title: 'Flip the Table — WoW Furniture Flipping Radar',
     description:
-        'Find high-demand, high-price items across all WoW realms. Powered by real-time auction data analysis.',
+        'Furnish your Homestead for gold — flip furniture, stack gold, decorate later. Real-time WoW housing decor auction data.',
     icons: {
         icon: '/favicon.png',
     },

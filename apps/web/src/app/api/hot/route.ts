@@ -14,10 +14,11 @@ export async function GET(request: NextRequest) {
   const realm = searchParams.get('realm') ? parseInt(searchParams.get('realm')!) : null;
   const search = searchParams.get('search') || null;
 
-  const sortCol = mode === 'demand' ? 'f.demand_z' : 'f.hotness_score';
+  const sortCol = 'f.hotness_score';
 
   // Build the query dynamically
   let whereConditions = [`f.region = '${region}'`];
+  whereConditions.push(`i.item_subclass = 'Decor'`);
   if (minConfidence > 0) whereConditions.push(`f.confidence >= ${minConfidence}`);
   if (realm !== null) whereConditions.push(`f.connected_realm_id = ${realm}`);
   if (search) whereConditions.push(`i.name ILIKE '%${search.replace(/'/g, "''")}%'`);
@@ -174,7 +175,7 @@ export async function GET(request: NextRequest) {
         demand_pct_diff: Number(row.demand_pct_diff),
         price_z: Number(row.price_z),
         demand_z: Number(row.demand_z),
-        hotness_score: Number(row.hotness_score),
+        sizzle_score: Number(row.hotness_score),
         confidence: Number(row.confidence),
         listing_count: Number(row.listing_count),
         total_quantity: Number(row.total_quantity),

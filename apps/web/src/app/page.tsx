@@ -70,8 +70,8 @@ function ConfidenceBar({ value }: { value: number | null }) {
     );
 }
 
-// --- Hotness Display ---
-function HotnessDisplay({ score }: { score: number | null }) {
+// --- Sizzle Display ---
+function SizzleDisplay({ score }: { score: number | null }) {
     if (score === null) return <span style={{ color: 'var(--text-muted)' }}>--</span>;
     // Normalize to 0-100 range for the bar (scores typically range -5 to 10)
     const normalizedPct = Math.max(0, Math.min(100, (score + 2) * 8));
@@ -88,7 +88,7 @@ function HotnessDisplay({ score }: { score: number | null }) {
 }
 
 // --- Column Sorting ---
-type SortKey = 'hotness' | 'price_z' | 'demand_z' | 'confidence' | 'price' | 'name';
+type SortKey = 'sizzle' | 'price_z' | 'demand_z' | 'confidence' | 'price' | 'name';
 type SortDir = 'asc' | 'desc';
 
 function sortItems(items: HotItem[], sortKey: SortKey, sortDir: SortDir): HotItem[] {
@@ -96,9 +96,9 @@ function sortItems(items: HotItem[], sortKey: SortKey, sortDir: SortDir): HotIte
         let va: number | string = 0;
         let vb: number | string = 0;
         switch (sortKey) {
-            case 'hotness':
-                va = a.hotness_score ?? -999;
-                vb = b.hotness_score ?? -999;
+            case 'sizzle':
+                va = a.sizzle_score ?? -999;
+                vb = b.sizzle_score ?? -999;
                 break;
             case 'price_z':
                 va = a.price_z ?? -999;
@@ -158,7 +158,7 @@ function HomePageInner() {
 
     // Sorting
     const [sortKey, setSortKey] = useState<SortKey>(
-        (searchParams.get('sort') as SortKey) || 'hotness'
+        (searchParams.get('sort') as SortKey) || 'sizzle'
     );
     const [sortDir, setSortDir] = useState<SortDir>(
         (searchParams.get('dir') as SortDir) || 'desc'
@@ -175,7 +175,7 @@ function HomePageInner() {
         if (minConfidence > 0) params.set('conf', String(minConfidence));
         if (selectedRealm) params.set('realm', String(selectedRealm));
         if (searchQuery) params.set('q', searchQuery);
-        if (sortKey !== 'hotness') params.set('sort', sortKey);
+        if (sortKey !== 'sizzle') params.set('sort', sortKey);
         if (sortDir !== 'desc') params.set('dir', sortDir);
         const qs = params.toString();
         router.replace(qs ? `/?${qs}` : '/', { scroll: false });
@@ -247,7 +247,7 @@ function HomePageInner() {
         <div className="page-container">
             {/* Header */}
             <div className="page-header">
-                <h1 className="page-title">Hot Items Radar</h1>
+                <h1 className="page-title">Flip the Table</h1>
                 {data && (
                     <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                         {data.region.toUpperCase()} &middot; {data.total_count} items &middot; {data.baseline_window_days}d baseline &middot; Updated {timeAgo(data.generated_at)}
@@ -255,19 +255,12 @@ function HomePageInner() {
                 )}
             </div>
             <p className="page-subtitle">
-                Items selling like hotcakes -- high demand, high price, across all realms.
+                Furnish your Homestead for gold &mdash; flip furniture, stack gold, decorate later.
             </p>
 
             {/* Filters */}
             <div className="filter-bar">
-                <select
-                    className="filter-select"
-                    value={mode}
-                    onChange={(e) => setMode(e.target.value as 'both' | 'demand')}
-                >
-                    <option value="both">Mode: Demand + Price</option>
-                    <option value="demand">Mode: Demand Only</option>
-                </select>
+
 
                 <select
                     className="filter-select"
@@ -357,7 +350,7 @@ function HomePageInner() {
                     <table className="data-table">
                         <thead>
                             <tr>
-                                {['Item', 'Best Realm', 'Price', 'Qty', 'Price Dev', 'Demand Dev', 'Hotness', 'Confidence', 'Updated'].map(
+                                {['Item', 'Best Realm', 'Price', 'Qty', 'Price Dev', 'Demand Dev', 'Sizzle', 'Confidence', 'Updated'].map(
                                     (h) => (
                                         <th key={h}>{h}</th>
                                     )
@@ -399,8 +392,8 @@ function HomePageInner() {
                                 <th onClick={() => handleSort('demand_z')} className={sortKey === 'demand_z' ? 'sorted' : ''} title="Z-score: how far the current demand deviates from its historical mean">
                                     Demand Dev <SortIndicator column="demand_z" />
                                 </th>
-                                <th onClick={() => handleSort('hotness')} className={sortKey === 'hotness' ? 'sorted' : ''} title="Combined score = 0.65 × demand_z + 0.35 × price_z. Higher = hotter">
-                                    Hotness <SortIndicator column="hotness" />
+                                <th onClick={() => handleSort('sizzle')} className={sortKey === 'sizzle' ? 'sorted' : ''} title="Combined score = 0.65 × demand_z + 0.35 × price_z. Higher = more sizzle">
+                                    Sizzle 🔥 <SortIndicator column="sizzle" />
                                 </th>
                                 <th onClick={() => handleSort('confidence')} className={sortKey === 'confidence' ? 'sorted' : ''} title="Data quality: based on snapshot count, listing volume, and price stability">
                                     Confidence <SortIndicator column="confidence" />
@@ -528,7 +521,7 @@ function HomePageInner() {
 
                                             {/* Hotness */}
                                             <td>
-                                                <HotnessDisplay score={item.hotness_score} />
+                                                <SizzleDisplay score={item.sizzle_score} />
                                             </td>
 
                                             {/* Confidence */}
@@ -606,7 +599,7 @@ function HomePageInner() {
                 >
                     <span>
                         Baselines computed over {data.baseline_window_days}-day rolling window using median + MAD.
-                        Hotness = {data.mode === 'both' ? '0.65 * demand_z + 0.35 * price_z' : 'demand_z'}.
+                        Sizzle = 0.65 × demand_z + 0.35 × price_z.
                     </span>
                     <span>
                         Demand proxy: snapshot churn (EWMA-smoothed). Not actual sales data.
@@ -628,7 +621,7 @@ export default function HomePage() {
                     <table className="data-table">
                         <thead>
                             <tr>
-                                {['Item', 'Best Realm', 'Price', 'Price Dev', 'Demand Dev', 'Hotness', 'Confidence', 'Updated'].map(
+                                {['Item', 'Best Realm', 'Price', 'Price Dev', 'Demand Dev', 'Sizzle', 'Confidence', 'Updated'].map(
                                     (h) => <th key={h}>{h}</th>
                                 )}
                             </tr>
