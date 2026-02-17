@@ -247,7 +247,10 @@ function HomePageInner() {
         <div className="page-container">
             {/* Header */}
             <div className="page-header">
-                <h1 className="page-title">Flip the Table</h1>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <img src="/tableflip.gif" alt="Table flip!" style={{ height: '2.4rem', borderRadius: '4px' }} />
+                    <h1 className="page-title">Flip the Table</h1>
+                </div>
                 {data && (
                     <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                         {data.region.toUpperCase()} &middot; {data.total_count} items &middot; {data.baseline_window_days}d baseline &middot; Updated {timeAgo(data.generated_at)}
