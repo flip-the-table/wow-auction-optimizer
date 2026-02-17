@@ -276,7 +276,7 @@ export async function GET(request: NextRequest) {
     console.error('Hot API error:', error);
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
-      { status: 500 }
+      { status: 500, headers: { 'Cache-Control': 'no-store' } }
     );
   }
 }
