@@ -167,10 +167,10 @@ function HomePageInner() {
     // Expandable alternate realms
     const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set());
 
-    // Title animation — synced to GIF table flip at ~8s
+    // Title animation — synced to GIF table flip at ~6.5s
     const [titleVisible, setTitleVisible] = useState(false);
     useEffect(() => {
-        const timer = setTimeout(() => setTitleVisible(true), 8000);
+        const timer = setTimeout(() => setTitleVisible(true), 6500);
         return () => clearTimeout(timer);
     }, []);
 
