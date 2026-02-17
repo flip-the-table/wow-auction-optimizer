@@ -248,7 +248,7 @@ function HomePageInner() {
             {/* Header */}
             <div className="page-header">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <img src="/tableflip.gif" alt="Table flip!" style={{ height: '2.4rem', borderRadius: '4px' }} />
+                    <img src="/tableflip.gif" alt="Table flip!" style={{ height: '7.2rem', borderRadius: '4px' }} />
                     <h1 className="page-title">Flip the Table</h1>
                 </div>
                 {data && (
