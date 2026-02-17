@@ -265,8 +265,8 @@ body::before {
 
 .data-table thead {
   position: sticky;
-  top: 0;
-  z-index: 10;
+  top: 52px;
+  z-index: 90;
 }
 
 .data-table th {
@@ -386,7 +386,7 @@ body::before {
 .page-container {
   max-width: 1400px;
   margin: 0 auto;
-  padding: 24px 20px;
+  padding: 8px 20px;
 }
 
 .page-header {

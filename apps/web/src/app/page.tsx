@@ -256,23 +256,27 @@ function HomePageInner() {
             <div className="page-header">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                     <img src="/tableflip.gif" alt="Table flip!" style={{ height: '14.4rem', borderRadius: '4px' }} />
-                    <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignSelf: 'center', paddingTop: '2.5rem' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                         <h1
                             className={`page-title ${!titleVisible ? 'title-hidden' : 'title-spin-in'}`}
                         >
                             Flip the <svg className="table-icon" viewBox="0 0 30 26" width="28" height="24" style={{ display: 'inline-block', verticalAlign: '-4px', marginRight: '1px' }}><defs><linearGradient id="tg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor="#f5a623" /><stop offset="100%" stopColor="#e07020" /></linearGradient></defs><polygon points="6,1 28,1 24,6 2,6" fill="url(#tg)" /><polygon points="2,6 6,1 6,3 2,7.5" fill="#c4861e" /><rect x="4" y="6" width="2.5" height="14" rx="0.5" fill="#2a1a0a" /><rect x="21" y="6" width="2.5" height="14" rx="0.5" fill="#2a1a0a" /><rect x="1" y="20" width="8" height="2.5" rx="1" fill="#1a1008" /><rect x="18" y="20" width="8" height="2.5" rx="1" fill="#1a1008" /></svg>able
                         </h1>
-                        {titleVisible && data && (
-                            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                                {data.region.toUpperCase()} &middot; {data.total_count} items &middot; {data.baseline_window_days}d baseline &middot; Updated {timeAgo(data.generated_at)}
-                            </span>
+                        {titleVisible && (
+                            <>
+                                <p className="page-subtitle" style={{ margin: '4px 0 0' }}>
+                                    Furnish your Homestead for gold &mdash; flip furniture, stack gold, decorate later.
+                                </p>
+                                {data && (
+                                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                                        {data.region.toUpperCase()} &middot; {data.total_count} items &middot; {data.baseline_window_days}d baseline &middot; Updated {timeAgo(data.generated_at)}
+                                    </span>
+                                )}
+                            </>
                         )}
                     </div>
                 </div>
             </div>
-            <p className="page-subtitle">
-                Furnish your Homestead for gold &mdash; flip furniture, stack gold, decorate later.
-            </p>
 
             {/* Filters */}
             <div className="filter-bar">
