@@ -14,6 +14,8 @@ export interface ItemInfo {
 export interface RealmRecommendation {
     connected_realm_id: number;
     realm_name: string | null;
+    connected_realm_names: string | null;
+    realm_count: number;
     price_z: number | null;
     demand_z: number | null;
     sell_suitability_score: number | null;

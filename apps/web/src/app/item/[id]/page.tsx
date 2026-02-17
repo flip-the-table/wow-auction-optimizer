@@ -82,6 +82,26 @@ export default function ItemDetailPage({ params }: { params: { id: string } }) {
     const [selectedRealm, setSelectedRealm] = useState<number | undefined>();
     const [days, setDays] = useState(14);
     const [realms, setRealms] = useState<RealmEntry[]>([]);
+    const [lbSortKey, setLbSortKey] = useState<string>('sell_suitability_score');
+    const [lbSortDir, setLbSortDir] = useState<'asc' | 'desc'>('desc');
+
+    const toggleLbSort = (key: string) => {
+        if (lbSortKey === key) {
+            setLbSortDir(d => d === 'asc' ? 'desc' : 'asc');
+        } else {
+            setLbSortKey(key);
+            setLbSortDir('desc');
+        }
+    };
+
+    const sortedLeaderboard = data?.realm_leaderboard ? [...data.realm_leaderboard].sort((a: any, b: any) => {
+        const av = a[lbSortKey];
+        const bv = b[lbSortKey];
+        if (av == null && bv == null) return 0;
+        if (av == null) return 1;
+        if (bv == null) return -1;
+        return lbSortDir === 'asc' ? av - bv : bv - av;
+    }) : [];
 
     useEffect(() => {
         fetchRealms().then(setRealms).catch(() => { });
@@ -477,27 +497,43 @@ export default function ItemDetailPage({ params }: { params: { id: string } }) {
             {/* Realm Leaderboard */}
             <div className="glass-card fade-in" style={{ padding: 24 }}>
                 <h3 style={{ fontSize: '0.92rem', fontWeight: 700, marginBottom: 16 }}>
-                    Realm Leaderboard -- Best Places to Sell
+                    Realm Leaderboard — Best Places to Sell
                 </h3>
-                {data.realm_leaderboard.length > 0 ? (
+                {sortedLeaderboard.length > 0 ? (
                     <div className="data-table-wrapper" style={{ border: 'none' }}>
                         <table className="data-table">
                             <thead>
                                 <tr>
                                     <th>#</th>
-                                    <th>Realm</th>
-                                    <th>Price</th>
-                                    <th>Qty</th>
-                                    <th>Price Z</th>
-                                    <th>Demand Z</th>
-                                    <th>Sell Suitability</th>
-                                    <th>Confidence</th>
+                                    {[
+                                        { key: 'realm_name', label: 'Realm' },
+                                        { key: 'current_price', label: 'Price' },
+                                        { key: 'total_quantity', label: 'Qty' },
+                                        { key: 'price_z', label: 'Price Z' },
+                                        { key: 'demand_z', label: 'Demand Z' },
+                                        { key: 'sell_suitability_score', label: 'Sell Suitability' },
+                                        { key: 'confidence', label: 'Confidence' },
+                                    ].map(col => (
+                                        <th
+                                            key={col.key}
+                                            onClick={() => toggleLbSort(col.key)}
+                                            style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
+                                        >
+                                            {col.label}
+                                            {lbSortKey === col.key && (
+                                                <span style={{ marginLeft: 4, fontSize: '0.7rem' }}>
+                                                    {lbSortDir === 'asc' ? '▲' : '▼'}
+                                                </span>
+                                            )}
+                                        </th>
+                                    ))}
                                 </tr>
                             </thead>
                             <tbody>
-                                {data.realm_leaderboard.map((r, i) => {
-                                    const connectedRealm = realms.find(rm => rm.connected_realm_id === r.connected_realm_id);
-                                    const realmTooltip = connectedRealm && connectedRealm.realm_count > 1 ? `Connected realms: ${connectedRealm.all_names.join(', ')}` : undefined;
+                                {sortedLeaderboard.map((r, i) => {
+                                    const realmTooltip = r.connected_realm_names && r.realm_count > 1
+                                        ? `Connected realms: ${r.connected_realm_names}`
+                                        : undefined;
                                     return (
                                         <tr key={r.connected_realm_id}>
                                             <td style={{ color: i < 3 ? 'var(--accent-gold)' : 'var(--text-muted)', fontWeight: 700 }}>
@@ -505,8 +541,8 @@ export default function ItemDetailPage({ params }: { params: { id: string } }) {
                                             </td>
                                             <td style={{ fontWeight: 500 }} title={realmTooltip}>
                                                 {r.realm_name ?? `Realm ${r.connected_realm_id}`}
-                                                {connectedRealm && connectedRealm.realm_count > 1 && (
-                                                    <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginLeft: 4 }}>({connectedRealm.realm_count})</span>
+                                                {r.realm_count > 1 && (
+                                                    <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginLeft: 4 }}>({r.realm_count})</span>
                                                 )}
                                             </td>
                                             <td>
@@ -527,12 +563,12 @@ export default function ItemDetailPage({ params }: { params: { id: string } }) {
                                             </td>
                                             <td>
                                                 <span style={{ fontWeight: 700, color: (r.sell_suitability_score ?? 0) > 1 ? 'var(--accent-gold)' : 'var(--text-primary)' }}>
-                                                    {r.sell_suitability_score?.toFixed(2) ?? '--'}
+                                                    {r.sell_suitability_score != null ? r.sell_suitability_score.toFixed(2) : '--'}
                                                 </span>
                                             </td>
                                             <td>
                                                 <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                                                    {((r.confidence ?? 0) * 100).toFixed(0)}%
+                                                    {r.confidence != null ? ((r.confidence) * 100).toFixed(0) + '%' : '--'}
                                                 </span>
                                             </td>
                                         </tr>

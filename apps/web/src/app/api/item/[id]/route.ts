@@ -38,41 +38,82 @@ export async function GET(
     item_subclass: item?.item_subclass ?? null,
   };
 
-  // Realm leaderboard (top 20 realms by sell suitability, falling back to price)
+  // Realm leaderboard: use item_realm_features_latest as primary source
+  // so Price Z, Demand Z, Sell Suitability, Confidence are always populated.
+  // UNION with item_realm_aggregates for realms not yet in features table.
   const lbRows = await sql`
-    SELECT
-      a.connected_realm_id,
-      f.price_z,
-      f.demand_z,
-      f.sell_suitability_score,
-      a.median_buyout as current_price,
-      f.confidence,
-      a.total_quantity,
-      r.name as realm_name
-    FROM item_realm_aggregates a
-    LEFT JOIN item_realm_features_latest f
-      ON a.item_id = f.item_id
-      AND a.connected_realm_id = f.connected_realm_id
-      AND a.region = f.region
-    LEFT JOIN (
-      SELECT DISTINCT ON (connected_realm_id) connected_realm_id, name
-      FROM realms
-      ORDER BY connected_realm_id, name ASC
-    ) r ON a.connected_realm_id = r.connected_realm_id
-    WHERE a.region = ${region}
-      AND a.item_id = ${itemId}
-    ORDER BY COALESCE(f.sell_suitability_score, 0) DESC, a.median_buyout DESC
-    LIMIT 20
+    WITH featured AS (
+      SELECT
+        f.connected_realm_id,
+        f.price_z,
+        f.demand_z,
+        f.sell_suitability_score,
+        COALESCE(a.median_buyout, f.current_price) as current_price,
+        f.confidence,
+        COALESCE(a.total_quantity, f.total_quantity) as total_quantity,
+        r.name as realm_name,
+        r.all_names as connected_realm_names,
+        r.realm_count
+      FROM item_realm_features_latest f
+      LEFT JOIN item_realm_aggregates a
+        ON f.item_id = a.item_id
+        AND f.connected_realm_id = a.connected_realm_id
+        AND f.region = a.region
+      LEFT JOIN (
+        SELECT connected_realm_id,
+               MIN(name) as name,
+               string_agg(name, ', ' ORDER BY name) as all_names,
+               COUNT(*) as realm_count
+        FROM realms
+        GROUP BY connected_realm_id
+      ) r ON f.connected_realm_id = r.connected_realm_id
+      WHERE f.region = ${region}
+        AND f.item_id = ${itemId}
+    ),
+    aggregates_only AS (
+      SELECT
+        a.connected_realm_id,
+        NULL::float as price_z,
+        NULL::float as demand_z,
+        NULL::float as sell_suitability_score,
+        a.median_buyout as current_price,
+        NULL::float as confidence,
+        a.total_quantity,
+        r.name as realm_name,
+        r.all_names as connected_realm_names,
+        r.realm_count
+      FROM item_realm_aggregates a
+      LEFT JOIN (
+        SELECT connected_realm_id,
+               MIN(name) as name,
+               string_agg(name, ', ' ORDER BY name) as all_names,
+               COUNT(*) as realm_count
+        FROM realms
+        GROUP BY connected_realm_id
+      ) r ON a.connected_realm_id = r.connected_realm_id
+      WHERE a.region = ${region}
+        AND a.item_id = ${itemId}
+        AND a.connected_realm_id NOT IN (SELECT connected_realm_id FROM featured)
+    )
+    SELECT * FROM (
+      SELECT * FROM featured
+      UNION ALL
+      SELECT * FROM aggregates_only
+    ) combined
+    ORDER BY COALESCE(sell_suitability_score, -999) DESC, current_price DESC
+    LIMIT 30
   `;
 
   const realmLeaderboard = lbRows.map((r: any) => ({
     connected_realm_id: r.connected_realm_id,
     realm_name: r.realm_name,
-    price_z: r.price_z,
-    demand_z: r.demand_z,
-    sell_suitability_score: r.sell_suitability_score,
+    connected_realm_names: r.connected_realm_names,
+    realm_count: Number(r.realm_count ?? 1),
+    price_z: r.price_z != null ? Number(r.price_z) : null,
+    demand_z: r.demand_z != null ? Number(r.demand_z) : null,
+    sell_suitability_score: r.sell_suitability_score != null ? Number(r.sell_suitability_score) : null,
     current_price: Number(r.current_price),
-    confidence: r.confidence,
+    confidence: r.confidence != null ? Number(r.confidence) : null,
     total_quantity: Number(r.total_quantity),
   }));
 
