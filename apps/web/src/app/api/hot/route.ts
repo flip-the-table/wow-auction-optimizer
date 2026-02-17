@@ -66,6 +66,16 @@ export async function GET(request: NextRequest) {
         SELECT connected_realm_id, MIN(name) as name
         FROM realms
         GROUP BY connected_realm_id
+      ),
+      total_counts AS (
+        SELECT item_id, COUNT(DISTINCT connected_realm_id) as cnt
+        FROM item_realm_aggregates WHERE region = '${region}'
+        GROUP BY item_id
+      ),
+      hot_counts AS (
+        SELECT item_id, COUNT(DISTINCT connected_realm_id) as cnt
+        FROM item_realm_features_latest WHERE region = '${region}'
+        GROUP BY item_id
       )
       SELECT
         f.item_id,
@@ -90,15 +100,15 @@ export async function GET(request: NextRequest) {
         i.item_subclass,
         m.icon_url,
         ri.name as realm_name,
-        (SELECT COUNT(DISTINCT connected_realm_id)
-         FROM item_realm_aggregates WHERE item_id = f.item_id AND region = f.region) as total_realm_count,
-        (SELECT COUNT(DISTINCT connected_realm_id)
-         FROM item_realm_features_latest WHERE item_id = f.item_id AND region = f.region) as hot_realm_count
+        COALESCE(tc.cnt, 0) as total_realm_count,
+        COALESCE(hc.cnt, 0) as hot_realm_count
       FROM item_realm_features_latest f
       JOIN best_per_item b ON f.item_id = b.item_id AND ${sortCol} = b.best_score
       LEFT JOIN items i ON f.item_id = i.id
       LEFT JOIN item_media m ON f.item_id = m.item_id
       LEFT JOIN realm_info ri ON f.connected_realm_id = ri.connected_realm_id
+      LEFT JOIN total_counts tc ON f.item_id = tc.item_id
+      LEFT JOIN hot_counts hc ON f.item_id = hc.item_id
       WHERE ${whereClause}
       ORDER BY ${sortCol} DESC
       LIMIT ${limit}
