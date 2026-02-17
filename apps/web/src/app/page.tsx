@@ -256,7 +256,7 @@ function HomePageInner() {
             <div className="page-header">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                     <img src="/tableflip.gif" alt="Table flip!" style={{ height: '14.4rem', borderRadius: '4px' }} />
-                    <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignSelf: 'center', paddingTop: '1.5rem' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignSelf: 'center', paddingTop: '2.5rem' }}>
                         <h1
                             className={`page-title ${!titleVisible ? 'title-hidden' : 'title-spin-in'}`}
                         >
