@@ -197,7 +197,14 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     console.error('Hot API error:', error);
     return NextResponse.json(
-      { error: error.message || 'Internal server error', stack: error.stack },
+      {
+        error: error.message || 'Internal server error',
+        debug: {
+          has_database_url: !!process.env.DATABASE_URL,
+          database_url_length: process.env.DATABASE_URL?.length ?? 0,
+          env_keys: Object.keys(process.env).filter(k => k.startsWith('DATABASE') || k.startsWith('REGION') || k.startsWith('AMPLIFY') || k.startsWith('NEXT')),
+        }
+      },
       { status: 500 }
     );
   }
