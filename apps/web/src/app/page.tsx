@@ -167,6 +167,13 @@ function HomePageInner() {
     // Expandable alternate realms
     const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set());
 
+    // Title animation — synced to GIF table flip at ~8s
+    const [titleVisible, setTitleVisible] = useState(false);
+    useEffect(() => {
+        const timer = setTimeout(() => setTitleVisible(true), 8000);
+        return () => clearTimeout(timer);
+    }, []);
+
     // Sync filter state to URL (so back-navigation preserves state)
     useEffect(() => {
         const params = new URLSearchParams();
@@ -247,15 +254,21 @@ function HomePageInner() {
         <div className="page-container">
             {/* Header */}
             <div className="page-header">
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                     <img src="/tableflip.gif" alt="Table flip!" style={{ height: '7.2rem', borderRadius: '4px' }} />
-                    <h1 className="page-title">Flip the Table</h1>
+                    <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                        <h1
+                            className={`page-title ${!titleVisible ? 'title-hidden' : 'title-spin-in'}`}
+                        >
+                            Flip the Table
+                        </h1>
+                        {titleVisible && data && (
+                            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                                {data.region.toUpperCase()} &middot; {data.total_count} items &middot; {data.baseline_window_days}d baseline &middot; Updated {timeAgo(data.generated_at)}
+                            </span>
+                        )}
+                    </div>
                 </div>
-                {data && (
-                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                        {data.region.toUpperCase()} &middot; {data.total_count} items &middot; {data.baseline_window_days}d baseline &middot; Updated {timeAgo(data.generated_at)}
-                    </span>
-                )}
             </div>
             <p className="page-subtitle">
                 Furnish your Homestead for gold &mdash; flip furniture, stack gold, decorate later.
@@ -315,315 +328,325 @@ function HomePageInner() {
             </div>
 
             {/* Error */}
-            {error && (
-                <div
-                    style={{
-                        background: 'rgba(239, 68, 68, 0.1)',
-                        border: '1px solid rgba(239, 68, 68, 0.3)',
-                        borderRadius: 'var(--radius-md)',
-                        padding: '12px 16px',
-                        marginBottom: 16,
-                        color: 'var(--accent-red)',
-                        fontSize: '0.85rem',
-                    }}
-                >
-                    {error} -- Make sure the API is running and data has been ingested.
-                </div>
-            )}
+            {
+                error && (
+                    <div
+                        style={{
+                            background: 'rgba(239, 68, 68, 0.1)',
+                            border: '1px solid rgba(239, 68, 68, 0.3)',
+                            borderRadius: 'var(--radius-md)',
+                            padding: '12px 16px',
+                            marginBottom: 16,
+                            color: 'var(--accent-red)',
+                            fontSize: '0.85rem',
+                        }}
+                    >
+                        {error} -- Make sure the API is running and data has been ingested.
+                    </div>
+                )
+            }
 
             {/* Loading overlay (shown when re-fetching with existing data) */}
-            {loading && data && (
-                <div style={{
-                    position: 'fixed', inset: 0, zIndex: 50,
-                    background: 'rgba(10, 14, 24, 0.6)',
-                    backdropFilter: 'blur(4px)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    flexDirection: 'column', gap: 12,
-                }}>
-                    <div className="loading-spinner" />
-                    <span style={{ color: 'var(--accent-gold)', fontSize: '0.9rem', fontWeight: 600 }}>
-                        Loading items...
-                    </span>
-                </div>
-            )}
+            {
+                loading && data && (
+                    <div style={{
+                        position: 'fixed', inset: 0, zIndex: 50,
+                        background: 'rgba(10, 14, 24, 0.6)',
+                        backdropFilter: 'blur(4px)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        flexDirection: 'column', gap: 12,
+                    }}>
+                        <div className="loading-spinner" />
+                        <span style={{ color: 'var(--accent-gold)', fontSize: '0.9rem', fontWeight: 600 }}>
+                            Loading items...
+                        </span>
+                    </div>
+                )
+            }
 
             {/* Loading skeleton (first load only) */}
-            {loading && !data && (
-                <div className="data-table-wrapper">
-                    <table className="data-table">
-                        <thead>
-                            <tr>
-                                {['Item', 'Best Realm', 'Price', 'Qty', 'Price Dev', 'Demand Dev', 'Sizzle', 'Confidence', 'Updated'].map(
-                                    (h) => (
-                                        <th key={h}>{h}</th>
-                                    )
-                                )}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {Array.from({ length: 10 }).map((_, i) => (
-                                <tr key={i}>
-                                    {Array.from({ length: 9 }).map((_, j) => (
-                                        <td key={j}>
-                                            <div className="skeleton" style={{ height: 18, width: 60 + (i % 5) * 15 }} />
-                                        </td>
-                                    ))}
+            {
+                loading && !data && (
+                    <div className="data-table-wrapper">
+                        <table className="data-table">
+                            <thead>
+                                <tr>
+                                    {['Item', 'Best Realm', 'Price', 'Qty', 'Price Dev', 'Demand Dev', 'Sizzle', 'Confidence', 'Updated'].map(
+                                        (h) => (
+                                            <th key={h}>{h}</th>
+                                        )
+                                    )}
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            )}
+                            </thead>
+                            <tbody>
+                                {Array.from({ length: 10 }).map((_, i) => (
+                                    <tr key={i}>
+                                        {Array.from({ length: 9 }).map((_, j) => (
+                                            <td key={j}>
+                                                <div className="skeleton" style={{ height: 18, width: 60 + (i % 5) * 15 }} />
+                                            </td>
+                                        ))}
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )
+            }
 
             {/* Data table */}
-            {data && (
-                <div className="data-table-wrapper fade-in">
-                    <table className="data-table">
-                        <thead>
-                            <tr>
-                                <th onClick={() => handleSort('name')} className={sortKey === 'name' ? 'sorted' : ''} title="Item name and category">
-                                    Item <SortIndicator column="name" />
-                                </th>
-                                <th title="The realm where this item has the highest sell suitability">Best Realm</th>
-                                <th onClick={() => handleSort('price')} className={sortKey === 'price' ? 'sorted' : ''} title="Current median buyout price on best realm">
-                                    Price <SortIndicator column="price" />
-                                </th>
-                                <th title="Total quantity of this item listed on the best realm">Qty</th>
-                                <th onClick={() => handleSort('price_z')} className={sortKey === 'price_z' ? 'sorted' : ''} title="Z-score: how far the current price deviates from its historical mean">
-                                    Price Dev <SortIndicator column="price_z" />
-                                </th>
-                                <th onClick={() => handleSort('demand_z')} className={sortKey === 'demand_z' ? 'sorted' : ''} title="Z-score: how far the current demand deviates from its historical mean">
-                                    Demand Dev <SortIndicator column="demand_z" />
-                                </th>
-                                <th onClick={() => handleSort('sizzle')} className={sortKey === 'sizzle' ? 'sorted' : ''} title="Combined score = 0.65 × demand_z + 0.35 × price_z. Higher = more sizzle">
-                                    Sizzle 🔥 <SortIndicator column="sizzle" />
-                                </th>
-                                <th onClick={() => handleSort('confidence')} className={sortKey === 'confidence' ? 'sorted' : ''} title="Data quality: based on snapshot count, listing volume, and price stability">
-                                    Confidence <SortIndicator column="confidence" />
-                                </th>
-                                <th title="Time since last data update">Updated</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {sortedItems.map((item, idx) => {
-                                const isExpanded = expandedItems.has(item.item.item_id);
-                                const connectedRealm = realms.find(r => r.connected_realm_id === item.best_realm.connected_realm_id);
-                                const realmTooltip = connectedRealm && connectedRealm.realm_count > 1 ? `Connected realms: ${connectedRealm.all_names.join(', ')}` : undefined;
-                                return (
-                                    <React.Fragment key={`${item.item.item_id}-${item.best_realm.connected_realm_id}`}>
-                                        <tr
-                                            onClick={() => window.open(`/item/${item.item.item_id}`, '_self')}
-                                            style={{ animationDelay: `${idx * 20}ms` }}
-                                            className="fade-in"
-                                        >
-                                            {/* Item cell */}
-                                            <td>
-                                                <div className="item-cell">
-                                                    {item.item.icon_url ? (
-                                                        <img
-                                                            src={item.item.icon_url}
-                                                            alt=""
-                                                            className="item-icon"
-                                                            loading="lazy"
-                                                        />
-                                                    ) : (
-                                                        <div className="item-icon-placeholder">
-                                                            {item.item.item_id}
+            {
+                data && (
+                    <div className="data-table-wrapper fade-in">
+                        <table className="data-table">
+                            <thead>
+                                <tr>
+                                    <th onClick={() => handleSort('name')} className={sortKey === 'name' ? 'sorted' : ''} title="Item name and category">
+                                        Item <SortIndicator column="name" />
+                                    </th>
+                                    <th title="The realm where this item has the highest sell suitability">Best Realm</th>
+                                    <th onClick={() => handleSort('price')} className={sortKey === 'price' ? 'sorted' : ''} title="Current median buyout price on best realm">
+                                        Price <SortIndicator column="price" />
+                                    </th>
+                                    <th title="Total quantity of this item listed on the best realm">Qty</th>
+                                    <th onClick={() => handleSort('price_z')} className={sortKey === 'price_z' ? 'sorted' : ''} title="Z-score: how far the current price deviates from its historical mean">
+                                        Price Dev <SortIndicator column="price_z" />
+                                    </th>
+                                    <th onClick={() => handleSort('demand_z')} className={sortKey === 'demand_z' ? 'sorted' : ''} title="Z-score: how far the current demand deviates from its historical mean">
+                                        Demand Dev <SortIndicator column="demand_z" />
+                                    </th>
+                                    <th onClick={() => handleSort('sizzle')} className={sortKey === 'sizzle' ? 'sorted' : ''} title="Combined score = 0.65 × demand_z + 0.35 × price_z. Higher = more sizzle">
+                                        Sizzle 🔥 <SortIndicator column="sizzle" />
+                                    </th>
+                                    <th onClick={() => handleSort('confidence')} className={sortKey === 'confidence' ? 'sorted' : ''} title="Data quality: based on snapshot count, listing volume, and price stability">
+                                        Confidence <SortIndicator column="confidence" />
+                                    </th>
+                                    <th title="Time since last data update">Updated</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {sortedItems.map((item, idx) => {
+                                    const isExpanded = expandedItems.has(item.item.item_id);
+                                    const connectedRealm = realms.find(r => r.connected_realm_id === item.best_realm.connected_realm_id);
+                                    const realmTooltip = connectedRealm && connectedRealm.realm_count > 1 ? `Connected realms: ${connectedRealm.all_names.join(', ')}` : undefined;
+                                    return (
+                                        <React.Fragment key={`${item.item.item_id}-${item.best_realm.connected_realm_id}`}>
+                                            <tr
+                                                onClick={() => window.open(`/item/${item.item.item_id}`, '_self')}
+                                                style={{ animationDelay: `${idx * 20}ms` }}
+                                                className="fade-in"
+                                            >
+                                                {/* Item cell */}
+                                                <td>
+                                                    <div className="item-cell">
+                                                        {item.item.icon_url ? (
+                                                            <img
+                                                                src={item.item.icon_url}
+                                                                alt=""
+                                                                className="item-icon"
+                                                                loading="lazy"
+                                                            />
+                                                        ) : (
+                                                            <div className="item-icon-placeholder">
+                                                                {item.item.item_id}
+                                                            </div>
+                                                        )}
+                                                        <div>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                                <span
+                                                                    className="item-name"
+                                                                    style={{ color: qualityColor(item.item.quality) }}
+                                                                >
+                                                                    {item.item.name ?? `Item #${item.item.item_id}`}
+                                                                </span>
+                                                                <a
+                                                                    href={`https://www.wowhead.com/item=${item.item.item_id}`}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    title="View on Wowhead"
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                    className="wh-link"
+                                                                >
+                                                                    <svg className="wh-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                                                                        <polyline points="15 3 21 3 21 9" />
+                                                                        <line x1="10" y1="14" x2="21" y2="3" />
+                                                                    </svg>
+                                                                    <span className="wh-text">Wowhead</span>
+                                                                </a>
+                                                            </div>
+                                                            {item.item.item_subclass && (
+                                                                <div className="item-id">{item.item.item_subclass}</div>
+                                                            )}
                                                         </div>
-                                                    )}
-                                                    <div>
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                                            <span
-                                                                className="item-name"
-                                                                style={{ color: qualityColor(item.item.quality) }}
-                                                            >
-                                                                {item.item.name ?? `Item #${item.item.item_id}`}
-                                                            </span>
-                                                            <a
-                                                                href={`https://www.wowhead.com/item=${item.item.item_id}`}
-                                                                target="_blank"
-                                                                rel="noopener noreferrer"
-                                                                title="View on Wowhead"
-                                                                onClick={(e) => e.stopPropagation()}
-                                                                className="wh-link"
-                                                            >
-                                                                <svg className="wh-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                                                                    <polyline points="15 3 21 3 21 9" />
-                                                                    <line x1="10" y1="14" x2="21" y2="3" />
-                                                                </svg>
-                                                                <span className="wh-text">Wowhead</span>
-                                                            </a>
-                                                        </div>
-                                                        {item.item.item_subclass && (
-                                                            <div className="item-id">{item.item.item_subclass}</div>
+                                                    </div>
+                                                </td>
+
+                                                {/* Best Realm */}
+                                                <td>
+                                                    <div style={{ fontWeight: 500 }} title={realmTooltip}>
+                                                        {item.best_realm.realm_name ?? `Realm ${item.best_realm.connected_realm_id}`}
+                                                        {connectedRealm && connectedRealm.realm_count > 1 && (
+                                                            <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginLeft: 4 }}>({connectedRealm.realm_count})</span>
                                                         )}
                                                     </div>
-                                                </div>
-                                            </td>
-
-                                            {/* Best Realm */}
-                                            <td>
-                                                <div style={{ fontWeight: 500 }} title={realmTooltip}>
-                                                    {item.best_realm.realm_name ?? `Realm ${item.best_realm.connected_realm_id}`}
-                                                    {connectedRealm && connectedRealm.realm_count > 1 && (
-                                                        <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginLeft: 4 }}>({connectedRealm.realm_count})</span>
-                                                    )}
-                                                </div>
-                                                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginTop: 4 }}>
-                                                    {item.alternate_realms.length > 0 && (
-                                                        <button
-                                                            style={{
-                                                                display: 'inline-flex', alignItems: 'center', gap: 4,
-                                                                fontSize: '0.72rem', fontWeight: 600, color: 'var(--accent-gold)',
-                                                                background: isExpanded ? 'rgba(255, 215, 0, 0.12)' : 'rgba(255, 215, 0, 0.06)',
-                                                                border: '1px solid rgba(255, 215, 0, 0.25)', borderRadius: 6,
-                                                                padding: '2px 8px', cursor: 'pointer', userSelect: 'none',
-                                                                transition: 'all 0.15s ease',
-                                                            }}
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setExpandedItems(prev => {
-                                                                    const next = new Set(prev);
-                                                                    if (next.has(item.item.item_id)) next.delete(item.item.item_id);
-                                                                    else next.add(item.item.item_id);
-                                                                    return next;
-                                                                });
-                                                            }}
-                                                        >
-                                                            <span style={{ fontSize: '0.8rem', lineHeight: 1 }}>{isExpanded ? '▾' : '▸'}</span>
-                                                            +{item.alternate_realms.length} hot realms
-                                                        </button>
-                                                    )}
-                                                    {item.total_realm_count > 0 && (
-                                                        <span
-                                                            style={{
-                                                                fontSize: '0.68rem', color: 'var(--text-muted)',
-                                                                cursor: 'pointer',
-                                                            }}
-                                                            onClick={(e) => { e.stopPropagation(); window.open(`/item/${item.item.item_id}`, '_self'); }}
-                                                            title={`View all ${item.total_realm_count} realms on item detail page`}
-                                                        >
-                                                            {item.total_realm_count} total realms →
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </td>
-
-                                            {/* Price */}
-                                            <td>
-                                                <GoldAmount copper={item.current_price} />
-                                            </td>
-
-                                            {/* Quantity */}
-                                            <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-secondary)' }}>
-                                                {item.total_quantity != null ? item.total_quantity.toLocaleString() : '—'}
-                                            </td>
-
-                                            {/* Price Deviation */}
-                                            <td>
-                                                <StatBadge value={item.price_z} formatter={formatZ} />
-                                                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                                                    {formatPct(item.price_pct_diff)}
-                                                </div>
-                                            </td>
-
-                                            {/* Demand Deviation */}
-                                            <td>
-                                                <StatBadge value={item.demand_z} formatter={formatZ} />
-                                                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                                                    {formatPct(item.demand_pct_diff)}
-                                                </div>
-                                            </td>
-
-                                            {/* Hotness */}
-                                            <td>
-                                                <SizzleDisplay score={item.sizzle_score} />
-                                            </td>
-
-                                            {/* Confidence */}
-                                            <td>
-                                                <ConfidenceBar value={item.confidence} />
-                                            </td>
-
-                                            {/* Updated */}
-                                            <td style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
-                                                {timeAgo(item.updated_at)}
-                                            </td>
-                                        </tr>
-
-                                        {/* Expandable alternate realm rows */}
-                                        {isExpanded && item.alternate_realms.map((alt) => (
-                                            <tr
-                                                key={`alt-${item.item.item_id}-${alt.connected_realm_id}`}
-                                                className="alt-realm-row"
-                                                style={{ background: 'rgba(255,255,255,0.02)', cursor: 'pointer' }}
-                                                onClick={() => window.open(`/item/${item.item.item_id}?realm=${alt.connected_realm_id}`, '_self')}
-                                            >
-                                                <td></td>
-                                                <td style={{ paddingLeft: 20, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                                                    {alt.realm_name ?? `Realm ${alt.connected_realm_id}`}
+                                                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginTop: 4 }}>
+                                                        {item.alternate_realms.length > 0 && (
+                                                            <button
+                                                                style={{
+                                                                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                                                                    fontSize: '0.72rem', fontWeight: 600, color: 'var(--accent-gold)',
+                                                                    background: isExpanded ? 'rgba(255, 215, 0, 0.12)' : 'rgba(255, 215, 0, 0.06)',
+                                                                    border: '1px solid rgba(255, 215, 0, 0.25)', borderRadius: 6,
+                                                                    padding: '2px 8px', cursor: 'pointer', userSelect: 'none',
+                                                                    transition: 'all 0.15s ease',
+                                                                }}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setExpandedItems(prev => {
+                                                                        const next = new Set(prev);
+                                                                        if (next.has(item.item.item_id)) next.delete(item.item.item_id);
+                                                                        else next.add(item.item.item_id);
+                                                                        return next;
+                                                                    });
+                                                                }}
+                                                            >
+                                                                <span style={{ fontSize: '0.8rem', lineHeight: 1 }}>{isExpanded ? '▾' : '▸'}</span>
+                                                                +{item.alternate_realms.length} hot realms
+                                                            </button>
+                                                        )}
+                                                        {item.total_realm_count > 0 && (
+                                                            <span
+                                                                style={{
+                                                                    fontSize: '0.68rem', color: 'var(--text-muted)',
+                                                                    cursor: 'pointer',
+                                                                }}
+                                                                onClick={(e) => { e.stopPropagation(); window.open(`/item/${item.item.item_id}`, '_self'); }}
+                                                                title={`View all ${item.total_realm_count} realms on item detail page`}
+                                                            >
+                                                                {item.total_realm_count} total realms →
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </td>
+
+                                                {/* Price */}
                                                 <td>
-                                                    <GoldAmount copper={alt.current_price} />
+                                                    <GoldAmount copper={item.current_price} />
                                                 </td>
-                                                <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
-                                                    {alt.total_quantity != null ? alt.total_quantity.toLocaleString() : '—'}
+
+                                                {/* Quantity */}
+                                                <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-secondary)' }}>
+                                                    {item.total_quantity != null ? item.total_quantity.toLocaleString() : '—'}
                                                 </td>
+
+                                                {/* Price Deviation */}
                                                 <td>
-                                                    <StatBadge value={alt.price_z} formatter={formatZ} />
+                                                    <StatBadge value={item.price_z} formatter={formatZ} />
+                                                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                                                        {formatPct(item.price_pct_diff)}
+                                                    </div>
                                                 </td>
+
+                                                {/* Demand Deviation */}
                                                 <td>
-                                                    <StatBadge value={alt.demand_z} formatter={formatZ} />
+                                                    <StatBadge value={item.demand_z} formatter={formatZ} />
+                                                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                                                        {formatPct(item.demand_pct_diff)}
+                                                    </div>
                                                 </td>
-                                                <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
-                                                    {alt.sell_suitability_score != null ? alt.sell_suitability_score.toFixed(2) : '—'}
-                                                </td>
+
+                                                {/* Hotness */}
                                                 <td>
-                                                    <ConfidenceBar value={alt.confidence} />
+                                                    <SizzleDisplay score={item.sizzle_score} />
                                                 </td>
-                                                <td></td>
+
+                                                {/* Confidence */}
+                                                <td>
+                                                    <ConfidenceBar value={item.confidence} />
+                                                </td>
+
+                                                {/* Updated */}
+                                                <td style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+                                                    {timeAgo(item.updated_at)}
+                                                </td>
                                             </tr>
-                                        ))}
-                                    </React.Fragment>
-                                );
-                            })}
 
-                            {sortedItems.length === 0 && !loading && (
-                                <tr>
-                                    <td colSpan={9} style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
-                                        No items found. Try adjusting filters, or run the ingest and compute jobs first.
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            )}
+                                            {/* Expandable alternate realm rows */}
+                                            {isExpanded && item.alternate_realms.map((alt) => (
+                                                <tr
+                                                    key={`alt-${item.item.item_id}-${alt.connected_realm_id}`}
+                                                    className="alt-realm-row"
+                                                    style={{ background: 'rgba(255,255,255,0.02)', cursor: 'pointer' }}
+                                                    onClick={() => window.open(`/item/${item.item.item_id}?realm=${alt.connected_realm_id}`, '_self')}
+                                                >
+                                                    <td></td>
+                                                    <td style={{ paddingLeft: 20, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                                                        {alt.realm_name ?? `Realm ${alt.connected_realm_id}`}
+                                                    </td>
+                                                    <td>
+                                                        <GoldAmount copper={alt.current_price} />
+                                                    </td>
+                                                    <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
+                                                        {alt.total_quantity != null ? alt.total_quantity.toLocaleString() : '—'}
+                                                    </td>
+                                                    <td>
+                                                        <StatBadge value={alt.price_z} formatter={formatZ} />
+                                                    </td>
+                                                    <td>
+                                                        <StatBadge value={alt.demand_z} formatter={formatZ} />
+                                                    </td>
+                                                    <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                                                        {alt.sell_suitability_score != null ? alt.sell_suitability_score.toFixed(2) : '—'}
+                                                    </td>
+                                                    <td>
+                                                        <ConfidenceBar value={alt.confidence} />
+                                                    </td>
+                                                    <td></td>
+                                                </tr>
+                                            ))}
+                                        </React.Fragment>
+                                    );
+                                })}
+
+                                {sortedItems.length === 0 && !loading && (
+                                    <tr>
+                                        <td colSpan={9} style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
+                                            No items found. Try adjusting filters, or run the ingest and compute jobs first.
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                )
+            }
 
             {/* Footer info */}
-            {data && (
-                <div
-                    style={{
-                        marginTop: 16,
-                        padding: '12px 0',
-                        fontSize: '0.75rem',
-                        color: 'var(--text-muted)',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        borderTop: '1px solid var(--border-subtle)',
-                    }}
-                >
-                    <span>
-                        Baselines computed over {data.baseline_window_days}-day rolling window using median + MAD.
-                        Sizzle = 0.65 × demand_z + 0.35 × price_z.
-                    </span>
-                    <span>
-                        Demand proxy: snapshot churn (EWMA-smoothed). Not actual sales data.
-                    </span>
-                </div>
-            )}
-        </div>
+            {
+                data && (
+                    <div
+                        style={{
+                            marginTop: 16,
+                            padding: '12px 0',
+                            fontSize: '0.75rem',
+                            color: 'var(--text-muted)',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            borderTop: '1px solid var(--border-subtle)',
+                        }}
+                    >
+                        <span>
+                            Baselines computed over {data.baseline_window_days}-day rolling window using median + MAD.
+                            Sizzle = 0.65 × demand_z + 0.35 × price_z.
+                        </span>
+                        <span>
+                            Demand proxy: snapshot churn (EWMA-smoothed). Not actual sales data.
+                        </span>
+                    </div>
+                )
+            }
+        </div >
     );
 }
 
