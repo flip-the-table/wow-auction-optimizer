@@ -9,14 +9,15 @@
         "lint": "next lint"
     },
     "dependencies": {
-        "next": "^14.2.0",
-        "react": "^18.3.0",
-        "react-dom": "^18.3.0",
         "@neondatabase/serverless": "^0.9.0",
         "@tanstack/react-table": "^8.17.0",
         "@tanstack/react-virtual": "^3.5.0",
-        "recharts": "^2.12.0",
-        "lucide-react": "^0.400.0"
+        "lucide-react": "^0.400.0",
+        "next": "^14.2.0",
+        "postgres": "^3.4.8",
+        "react": "^18.3.0",
+        "react-dom": "^18.3.0",
+        "recharts": "^2.12.0"
     },
     "devDependencies": {
         "@types/node": "^20.14.0",

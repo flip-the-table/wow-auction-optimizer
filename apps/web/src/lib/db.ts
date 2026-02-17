@@ -1,18 +1,27 @@
 /**
  * Database client for Next.js API routes.
- * Uses @neondatabase/serverless for Netlify serverless functions.
- * Falls back to standard pg for local dev.
+ * Uses 'postgres' (porsager/postgres) for standard PostgreSQL connections.
+ * Compatible with AWS RDS, Neon, Supabase, or any Postgres instance.
  */
 
-import { neon } from '@neondatabase/serverless';
+import postgres from 'postgres';
 
-// Neon serverless SQL tagged template
+let sql: postgres.Sql | null = null;
+
 export function getDb() {
+    if (sql) return sql;
+
     const databaseUrl = process.env.DATABASE_URL;
     if (!databaseUrl) {
         throw new Error('DATABASE_URL environment variable is required');
     }
-    return neon(databaseUrl);
+    sql = postgres(databaseUrl, {
+        max: 10,
+        idle_timeout: 20,
+        connect_timeout: 10,
+        ssl: 'require',
+    });
+    return sql;
 }
 
-export type SqlClient = ReturnType<typeof neon>;
+export type SqlClient = postgres.Sql;

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 
-export const runtime = 'edge';
+export const runtime = 'nodejs';
 
 export async function GET(request: NextRequest) {
   const sql = getDb();
@@ -101,8 +101,8 @@ export async function GET(request: NextRequest) {
     `;
   }
 
-  // Use raw SQL since we're building dynamic queries
-  const rows = await sql(query);
+  // Use sql.unsafe() for dynamic queries (query is built with string interpolation)
+  const rows = await sql.unsafe(query);
 
   // For each item, get realm name and alternates
   const items = await Promise.all(
