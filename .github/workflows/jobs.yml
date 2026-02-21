@@ -1,7 +1,7 @@
 name: Auction Data Jobs
 on:
   schedule:
-    - cron: '0 * * * *'  # Run every hour
+    - cron: '0 8 * * *'  # Midnight PST (08:00 UTC)
   workflow_dispatch: {}   # Allow manual trigger
 
 jobs:
