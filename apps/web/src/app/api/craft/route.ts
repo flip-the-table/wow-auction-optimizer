@@ -49,8 +49,21 @@ export async function GET(request: NextRequest) {
 
     const sql = getDb();
 
+    // Diagnostic modes are ops-only: require a server-side token. With no
+    // DEBUG_ROUTES_TOKEN configured they are disabled entirely.
+    const debugParam = searchParams.get('debug');
+    if (debugParam) {
+      const token = process.env.DEBUG_ROUTES_TOKEN;
+      const provided = request.headers.get('x-debug-token');
+      if (!token || provided !== token) {
+        return NextResponse.json({ error: 'not found' }, {
+          status: 404, headers: { 'Cache-Control': 'no-store' },
+        });
+      }
+    }
+
     // Diagnostic mode: stage-by-stage funnel counts (never cached)
-    if (searchParams.get('debug') === '1') {
+    if (debugParam === '1') {
       const [funnel] = await sql`
         SELECT
           (SELECT COUNT(*) FROM recipes) as recipes_total,
@@ -75,7 +88,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Diagnostic mode 2: what item classes do profession recipes actually craft?
-    if (searchParams.get('debug') === '2') {
+    if (debugParam === '2') {
       const breakdown = await sql`
         SELECT
           COALESCE(i.item_class, '(unresolved)') as item_class,
@@ -267,7 +280,7 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     console.error('Craft API error:', error);
     return NextResponse.json(
-      { error: error.message || 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500, headers: { 'Cache-Control': 'no-store' } }
     );
   }

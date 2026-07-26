@@ -135,7 +135,7 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     console.error('Decor opportunities API error:', error);
     return NextResponse.json(
-      { error: error.message || 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500, headers: { 'Cache-Control': 'no-store' } }
     );
   }

@@ -70,19 +70,6 @@ export async function GET(request: NextRequest) {
 
     const sql = getDb();
 
-    // EXPLAIN diagnostics (read-only, mirrors the craft debug pattern)
-    if (searchParams.get('debug') === 'explain' && materialKey && realm !== null) {
-      const plan = await sql.unsafe(`
-        EXPLAIN (ANALYZE, BUFFERS)
-        SELECT * FROM material_value_summaries
-        WHERE region = '${region.replace(/[^a-z]/g, '')}'
-          AND connected_realm_id = ${realm}
-          AND constrained_material_id = 1
-        ORDER BY computed_at DESC LIMIT 1
-      `).catch((e: any) => [{ 'QUERY PLAN': String(e?.message) }]);
-      return NextResponse.json(plan, { headers: { 'Cache-Control': 'no-store' } });
-    }
-
     // --- No material param: list available materials (picker) ---
     if (!materialKey) {
       try {
@@ -251,8 +238,9 @@ export async function GET(request: NextRequest) {
     });
   } catch (error: any) {
     console.error('Material value API error:', error);
+    // Never echo SQL/driver text to clients
     return NextResponse.json(
-      { error: error.message || 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500, headers: { 'Cache-Control': 'no-store' } }
     );
   }
