@@ -103,6 +103,31 @@ async def run_cleanup():
         logger.info("Daily history cleanup: %d rows older than %d days deleted",
                     result.rowcount, MAX_DAILY_HISTORY_DAYS)
 
+        # Prune aggregates/daily rows for items outside the relevant universe
+        # (classified as neither Decor, craftable, nor reagent). Guarded on the
+        # recipe catalog being populated — before that, craftables/reagents
+        # can't be distinguished from irrelevant items.
+        recipe_count = (await conn.execute(text("SELECT COUNT(*) FROM recipes"))).scalar()
+        if recipe_count and recipe_count > 0:
+            irrelevant_filter = """
+                USING items i
+                WHERE {alias}.item_id = i.id
+                  AND i.item_subclass IS NOT NULL
+                  AND i.item_subclass != 'Decor'
+                  AND NOT EXISTS (SELECT 1 FROM recipes r WHERE r.crafted_item_id = {alias}.item_id)
+                  AND NOT EXISTS (SELECT 1 FROM recipe_reagents rr WHERE rr.reagent_item_id = {alias}.item_id)
+            """
+            result = await conn.execute(text(
+                "DELETE FROM item_realm_aggregates a " + irrelevant_filter.format(alias="a")
+            ))
+            logger.info("Universe prune: %d irrelevant aggregate rows deleted", result.rowcount)
+            result = await conn.execute(text(
+                "DELETE FROM item_realm_daily d " + irrelevant_filter.format(alias="d")
+            ))
+            logger.info("Universe prune: %d irrelevant daily rows deleted", result.rowcount)
+        else:
+            logger.info("Universe prune skipped: recipe catalog not yet populated")
+
     # VACUUM to reclaim disk space (needs autocommit)
     from sqlalchemy import create_engine
     sync_engine = create_engine(settings.database_url_sync, isolation_level="AUTOCOMMIT")

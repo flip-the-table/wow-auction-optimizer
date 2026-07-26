@@ -112,6 +112,33 @@ async def ingest_realms(client: BlizzardClient, session_factory) -> list[int]:
     return connected_realm_ids
 
 
+async def load_item_universe(session_factory) -> tuple[set[int], set[int]]:
+    """
+    Load the item universe for aggregate storage.
+
+    Returns (relevant_ids, classified_ids):
+    - relevant: Decor items + craftable items + recipe reagents — the only
+      items whose per-realm aggregates the product actually uses.
+    - classified: items whose metadata (subclass) is known. Unclassified items
+      are still aggregated so new Decor items get picked up after metadata
+      resolution; classified-irrelevant items are skipped (was ~18.7k items x
+      83 realms of dead weight — ~85% of DB size).
+    """
+    relevant: set[int] = set()
+    async with session_factory() as session:
+        r = await session.execute(text("SELECT id FROM items WHERE item_subclass = 'Decor'"))
+        relevant.update(row[0] for row in r)
+        r = await session.execute(text(
+            "SELECT DISTINCT crafted_item_id FROM recipes WHERE crafted_item_id IS NOT NULL"
+        ))
+        relevant.update(row[0] for row in r)
+        r = await session.execute(text("SELECT DISTINCT reagent_item_id FROM recipe_reagents"))
+        relevant.update(row[0] for row in r)
+        r = await session.execute(text("SELECT id FROM items WHERE item_subclass IS NOT NULL"))
+        classified = {row[0] for row in r}
+    return relevant, classified
+
+
 def compute_buyout_stats(auctions: list[dict]) -> dict[int, dict]:
     """
     Aggregate per-item auction metrics.
@@ -216,10 +243,16 @@ async def ingest_realm_auctions(
     session_factory,
     connected_realm_id: int,
     settings,
+    relevant_ids: set[int] | None = None,
+    classified_ids: set[int] | None = None,
 ) -> tuple[int, set[int]]:
     """
     Ingest auctions for a single connected realm.
     UPSERTs aggregated stats into item_realm_aggregates.
+
+    When relevant_ids/classified_ids are provided, aggregates are only stored
+    for relevant or not-yet-classified items. ALL seen item IDs are still
+    returned so metadata discovery keeps working.
 
     Returns: (auction_count, set_of_item_ids_seen)
     """
@@ -250,7 +283,14 @@ async def ingest_realm_auctions(
 
     # Aggregate per-item stats
     item_stats = compute_buyout_stats(auctions)
+    # All seen IDs go to metadata discovery; aggregates are scoped to the
+    # relevant universe (+ unclassified items awaiting metadata)
     item_ids = set(item_stats.keys())
+    if relevant_ids is not None and classified_ids is not None:
+        item_stats = {
+            iid: s for iid, s in item_stats.items()
+            if iid in relevant_ids or iid not in classified_ids
+        }
 
     async with session_factory() as session:
         # Get previous aggregate data for this realm to compute demand proxy
@@ -557,30 +597,46 @@ async def run_ingest():
         connected_realm_ids = await ingest_realms(client, session_factory)
         logger.info("Processing %d connected realms", len(connected_realm_ids))
 
-        # Step 2: Fetch auctions for each realm sequentially
+        # Step 1.5: Load the relevant item universe for aggregate scoping
+        relevant_ids, classified_ids = await load_item_universe(session_factory)
+        logger.info(
+            "Item universe: %d relevant, %d classified",
+            len(relevant_ids), len(classified_ids),
+        )
+
+        # Step 2: Fetch auctions for realms concurrently (bounded)
         total_auctions = 0
         all_item_ids: set[int] = set()
         success_count = 0
         fail_count = 0
+        done_count = 0
 
-        for i, cr_id in enumerate(connected_realm_ids):
-            logger.info(
-                "Ingesting realm %d/%d (ID: %d)",
-                i + 1,
-                len(connected_realm_ids),
-                cr_id,
-            )
-            try:
-                count, item_ids = await ingest_realm_auctions(
-                    client, session_factory, cr_id, settings
-                )
-                total_auctions += count
-                all_item_ids.update(item_ids)
-                success_count += 1
-            except Exception as e:
-                logger.error("Failed realm %d: %s", cr_id, e)
-                fail_count += 1
-                continue
+        realm_semaphore = asyncio.Semaphore(4)
+
+        async def ingest_one(cr_id: int):
+            nonlocal total_auctions, success_count, fail_count, done_count
+            async with realm_semaphore:
+                try:
+                    count, item_ids = await ingest_realm_auctions(
+                        client, session_factory, cr_id, settings,
+                        relevant_ids=relevant_ids, classified_ids=classified_ids,
+                    )
+                    total_auctions += count
+                    all_item_ids.update(item_ids)
+                    success_count += 1
+                except Exception as e:
+                    logger.error("Failed realm %d: %s", cr_id, e)
+                    fail_count += 1
+                finally:
+                    done_count += 1
+                    if done_count % 10 == 0 or done_count == len(connected_realm_ids):
+                        logger.info(
+                            "Realms: %d/%d done (%d ok, %d failed)",
+                            done_count, len(connected_realm_ids),
+                            success_count, fail_count,
+                        )
+
+        await asyncio.gather(*[ingest_one(cr_id) for cr_id in connected_realm_ids])
 
         # Step 3: Ingest region-wide commodities (reagent prices for craft costs)
         await ingest_commodities(client, session_factory, settings)

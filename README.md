@@ -18,11 +18,12 @@ Cloud-native web app that identifies high-demand, high-price World of Warcraft a
 │       └── Upstash Redis (cache)    │
 └────────────────────────────────────┘
          ▲
-         │  GitHub Actions (daily, 08:00 UTC)
+         │  GitHub Actions (3x daily: 02/10/18 UTC)
          ├── ingest.py
          ├── compute.py
          ├── cleanup.py
-         └── meta_resolve.py
+         ├── meta_resolve.py
+         └── recipe_resolve.py (monthly)
 ```
 
 ## Quick Start (Local Dev)
@@ -109,11 +110,15 @@ npm run dev
 
 ### GitHub Actions Workflow
 
-Already configured in `.github/workflows/jobs.yml`. Runs daily at 08:00 UTC:
-1. Cleanup old data (ensure indexes, prune snapshots + daily history > 90 days, VACUUM)
-2. Ingest auction data from Blizzard API
-3. Compute hotness/features (and purge stale feature rows)
+Already configured in `.github/workflows/jobs.yml`. Runs 3x daily (02/10/18 UTC):
+1. Cleanup old data (ensure indexes, prune snapshots + daily history > 90 days,
+   prune items outside the relevant universe, VACUUM)
+2. Ingest auction data from Blizzard API (concurrent realms; aggregates scoped to
+   Decor + craftables + reagents) + region-wide commodity prices
+3. Compute hotness/features + craft costs (and purge stale feature rows)
 4. Resolve item metadata
+
+`recipes.yml` refreshes the profession recipe catalog monthly (or on dispatch).
 
 ---
 

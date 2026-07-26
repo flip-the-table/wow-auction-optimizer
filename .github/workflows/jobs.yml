@@ -1,7 +1,9 @@
 name: Auction Data Jobs
 on:
   schedule:
-    - cron: '0 8 * * *'  # Midnight PST (08:00 UTC)
+    # 3x daily (every 8h). Fits private-repo free tier (~2000 min/mo) now that
+    # ingest is scoped to relevant items + fetches realms concurrently.
+    - cron: '0 2,10,18 * * *'
   workflow_dispatch: {}   # Allow manual trigger
 
 jobs:
