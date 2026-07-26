@@ -156,6 +156,68 @@ export async function fetchRealms(): Promise<RealmEntry[]> {
     return res.json();
 }
 
+export interface CraftReagent {
+    item_id: number;
+    name: string | null;
+    quantity: number;
+    unit_price: number | null;
+}
+
+export interface CraftRecipe {
+    recipe_id: number;
+    recipe_name: string | null;
+    profession_id: number;
+    profession_name: string | null;
+    skill_tier_name: string | null;
+    crafted_quantity: number;
+    item: {
+        item_id: number;
+        name: string | null;
+        quality: string | null;
+        icon_url: string | null;
+        item_subclass: string | null;
+    };
+    craft_cost: number;
+    reagents: CraftReagent[];
+    best_realm: {
+        connected_realm_id: number;
+        realm_name: string | null;
+        sell_price: number;
+        market_quantity: number;
+        market_listings: number;
+    };
+    margin: number;
+    margin_pct: number | null;
+}
+
+export interface CraftResponse {
+    recipes: CraftRecipe[];
+    professions: { id: number; name: string }[];
+    total_count: number;
+    region: string;
+    ah_cut: number;
+    generated_at: string;
+}
+
+export async function fetchCraftable(params: {
+    limit?: number;
+    all?: boolean;
+    profession?: number;
+    search?: string;
+}): Promise<CraftResponse> {
+    const searchParams = new URLSearchParams();
+    if (params.limit) searchParams.set('limit', String(params.limit));
+    if (params.all) searchParams.set('all', '1');
+    if (params.profession) searchParams.set('profession', String(params.profession));
+    if (params.search) searchParams.set('search', params.search);
+
+    const res = await fetch(`/api/craft?${searchParams}`, {
+        next: { revalidate: 60 },
+    });
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    return res.json();
+}
+
 export async function fetchHealth(): Promise<HealthResponse> {
     const res = await fetch(`/api/health`, { cache: 'no-store' });
     if (!res.ok) throw new Error(`API error: ${res.status}`);

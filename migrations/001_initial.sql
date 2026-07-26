@@ -123,6 +123,52 @@ CREATE INDEX IF NOT EXISTS ix_daily_item_region
 CREATE INDEX IF NOT EXISTS ix_daily_date
     ON item_realm_daily(date);
 
+CREATE TABLE IF NOT EXISTS recipes (
+    id              INTEGER PRIMARY KEY,
+    name            VARCHAR(512),
+    profession_id   INTEGER NOT NULL,
+    profession_name VARCHAR(128),
+    skill_tier_id   INTEGER NOT NULL,
+    skill_tier_name VARCHAR(128),
+    category_name   VARCHAR(256),
+    crafted_item_id INTEGER,
+    crafted_quantity DOUBLE PRECISION DEFAULT 1.0,
+    updated_at      TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS ix_recipes_crafted_item ON recipes(crafted_item_id);
+CREATE INDEX IF NOT EXISTS ix_recipes_profession ON recipes(profession_id, skill_tier_id);
+
+CREATE TABLE IF NOT EXISTS recipe_reagents (
+    recipe_id       INTEGER NOT NULL,
+    reagent_item_id INTEGER NOT NULL,
+    quantity        INTEGER NOT NULL DEFAULT 1,
+    PRIMARY KEY (recipe_id, reagent_item_id)
+);
+CREATE INDEX IF NOT EXISTS ix_reagents_item ON recipe_reagents(reagent_item_id);
+
+CREATE TABLE IF NOT EXISTS region_commodities (
+    region           VARCHAR(16) NOT NULL,
+    item_id          INTEGER NOT NULL,
+    listing_count    INTEGER DEFAULT 0,
+    total_quantity   BIGINT DEFAULT 0,
+    min_unit_price   BIGINT,
+    median_unit_price BIGINT,
+    updated_at       TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (region, item_id)
+);
+
+CREATE TABLE IF NOT EXISTS recipe_costs (
+    region           VARCHAR(16) NOT NULL,
+    recipe_id        INTEGER NOT NULL,
+    crafted_item_id  INTEGER NOT NULL,
+    craft_cost       BIGINT,
+    reagents_priced  INTEGER DEFAULT 0,
+    reagents_total   INTEGER DEFAULT 0,
+    updated_at       TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (region, recipe_id)
+);
+CREATE INDEX IF NOT EXISTS ix_recipe_costs_item ON recipe_costs(crafted_item_id);
+
 CREATE TABLE IF NOT EXISTS item_realm_features_latest (
     region              VARCHAR(16) NOT NULL,
     connected_realm_id  INTEGER NOT NULL,

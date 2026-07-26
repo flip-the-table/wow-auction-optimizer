@@ -340,6 +340,15 @@ function HomePageInner() {
                 <button className="btn btn-ghost" onClick={loadData} title="Re-fetch latest data from the server">
                     ↻ Refresh
                 </button>
+
+                <a
+                    href="/craft"
+                    className="btn btn-secondary"
+                    style={{ marginLeft: 'auto', textDecoration: 'none' }}
+                    title="Craft cost vs sell price margins for profession recipes"
+                >
+                    ⚒ Craftable Margins
+                </a>
             </div>
 
             {/* Error */}

@@ -1,0 +1,47 @@
+name: Recipe Catalog
+
+on:
+  schedule:
+    - cron: '0 6 1 * *'  # Monthly, 1st at 06:00 UTC (catalog is static data)
+  workflow_dispatch:
+    inputs:
+      full_refresh:
+        description: 'Refetch the entire catalog (default: only missing recipes)'
+        required: false
+        default: 'false'
+        type: boolean
+
+jobs:
+  resolve-recipes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Resolve recipe catalog
+        run: python -m services.jobs.recipe_resolve
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL_SYNC: ${{ secrets.DATABASE_URL_SYNC }}
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          BLIZZARD_CLIENT_ID: ${{ secrets.BLIZZARD_CLIENT_ID }}
+          BLIZZARD_CLIENT_SECRET: ${{ secrets.BLIZZARD_CLIENT_SECRET }}
+          RECIPE_FULL_REFRESH: ${{ inputs.full_refresh == true && '1' || '' }}
+
+      - name: Resolve item metadata (crafted items + reagents)
+        run: python -m services.jobs.meta_resolve
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL_SYNC: ${{ secrets.DATABASE_URL_SYNC }}
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          BLIZZARD_CLIENT_ID: ${{ secrets.BLIZZARD_CLIENT_ID }}
+          BLIZZARD_CLIENT_SECRET: ${{ secrets.BLIZZARD_CLIENT_SECRET }}

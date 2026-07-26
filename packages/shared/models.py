@@ -194,6 +194,86 @@ class ItemRealmDaily(Base):
     )
 
 
+class Recipe(Base):
+    """Profession recipe catalog (static Game Data API).
+
+    One row per recipe; reagent requirements live in recipe_reagents.
+    crafted_item_id is NULL for non-item outputs (enchants etc.) — those are
+    excluded from margin computation.
+    """
+    __tablename__ = "recipes"
+
+    id = Column(Integer, primary_key=True, autoincrement=False)
+    name = Column(String(512), nullable=True)
+    profession_id = Column(Integer, nullable=False)
+    profession_name = Column(String(128), nullable=True)
+    skill_tier_id = Column(Integer, nullable=False)
+    skill_tier_name = Column(String(128), nullable=True)
+    category_name = Column(String(256), nullable=True)
+    crafted_item_id = Column(Integer, nullable=True, index=True)
+    crafted_quantity = Column(Float, default=1.0)
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        Index("ix_recipes_profession", "profession_id", "skill_tier_id"),
+    )
+
+
+class RecipeReagent(Base):
+    """Reagents required by a recipe."""
+    __tablename__ = "recipe_reagents"
+
+    recipe_id = Column(Integer, primary_key=True)
+    reagent_item_id = Column(Integer, primary_key=True)
+    quantity = Column(Integer, nullable=False, default=1)
+
+    __table_args__ = (
+        Index("ix_reagents_item", "reagent_item_id"),
+    )
+
+
+class RegionCommodity(Base):
+    """Region-wide commodity prices (herbs, ore, cloth... — most reagents).
+
+    Commodities trade region-wide and are absent from per-realm auction
+    responses, so they get their own aggregate table.
+    """
+    __tablename__ = "region_commodities"
+
+    region = Column(String(16), primary_key=True)
+    item_id = Column(Integer, primary_key=True)
+
+    listing_count = Column(Integer, default=0)
+    total_quantity = Column(BigInteger, default=0)
+    min_unit_price = Column(BigInteger, nullable=True)
+    median_unit_price = Column(BigInteger, nullable=True)
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class RecipeCost(Base):
+    """Computed cost-to-craft per recipe per region (reagents are region-priced).
+
+    reagents_priced < reagents_total means the cost is a partial lower bound
+    (some reagent had no price source) — the UI must flag it.
+    """
+    __tablename__ = "recipe_costs"
+
+    region = Column(String(16), primary_key=True)
+    recipe_id = Column(Integer, primary_key=True)
+
+    crafted_item_id = Column(Integer, nullable=False, index=True)
+    craft_cost = Column(BigInteger, nullable=True)
+    reagents_priced = Column(Integer, default=0)
+    reagents_total = Column(Integer, default=0)
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class ItemRealmFeaturesLatest(Base):
     __tablename__ = "item_realm_features_latest"
 

@@ -381,6 +381,64 @@ class BlizzardClient:
             use_etag=True,
         )
 
+    async def get_profession_index(self) -> list[dict]:
+        """
+        GET /data/wow/profession/index
+        Namespace: static-{region}
+        Returns list of professions (id, name).
+        """
+        data = await self.request(
+            "/data/wow/profession/index",
+            namespace=self._settings.namespace_static,
+        )
+        return data.get("professions", [])
+
+    async def get_profession(self, profession_id: int) -> dict:
+        """
+        GET /data/wow/profession/{id}
+        Namespace: static-{region}
+        Returns profession detail including skill_tiers list.
+        """
+        return await self.request(
+            f"/data/wow/profession/{profession_id}",
+            namespace=self._settings.namespace_static,
+        )
+
+    async def get_skill_tier(self, profession_id: int, skill_tier_id: int) -> dict:
+        """
+        GET /data/wow/profession/{id}/skill-tier/{tierId}
+        Namespace: static-{region}
+        Returns tier detail with categories -> recipes (id, name).
+        """
+        return await self.request(
+            f"/data/wow/profession/{profession_id}/skill-tier/{skill_tier_id}",
+            namespace=self._settings.namespace_static,
+        )
+
+    async def get_recipe(self, recipe_id: int) -> dict:
+        """
+        GET /data/wow/recipe/{id}
+        Namespace: static-{region}
+        Returns recipe detail: crafted_item, reagents [{reagent, quantity}], crafted_quantity.
+        """
+        return await self.request(
+            f"/data/wow/recipe/{recipe_id}",
+            namespace=self._settings.namespace_static,
+        )
+
+    async def get_character_professions(self, realm_slug: str, character_name: str) -> dict:
+        """
+        GET /profile/wow/character/{realmSlug}/{characterName}/professions
+        Namespace: profile-{region}
+        Public profile data: known professions, skill tiers, and known recipe IDs.
+        Works with an app token — no user OAuth required.
+        """
+        return await self.request(
+            f"/profile/wow/character/{realm_slug}/{character_name.lower()}/professions",
+            namespace=f"profile-{self._settings.region}",
+            use_etag=False,
+        )
+
     def get_metrics(self) -> dict:
         """Return client metrics for observability."""
         return {

@@ -234,6 +234,52 @@ async def run_compute():
             purge_stmt, {"region": settings.region, "run_ts": now}
         )
 
+        # Recompute craft costs (cost of reagents per recipe, region-priced).
+        # Price source priority per reagent:
+        #   1. region commodity median (most reagents are commodities)
+        #   2. vendor purchase price (vendor-sold reagents)
+        #   3. cheapest realm median from AH aggregates (non-commodity AH items)
+        # Partial costs are stored with reagents_priced < reagents_total so the
+        # UI can flag them as lower bounds.
+        craft_cost_stmt = text("""
+            INSERT INTO recipe_costs (
+                region, recipe_id, crafted_item_id, craft_cost,
+                reagents_priced, reagents_total, updated_at
+            )
+            SELECT
+                :region,
+                r.id,
+                r.crafted_item_id,
+                SUM(COALESCE(uc.unit_cost, 0) * rr.quantity)::bigint,
+                COUNT(uc.unit_cost),
+                COUNT(*),
+                :run_ts
+            FROM recipes r
+            JOIN recipe_reagents rr ON rr.recipe_id = r.id
+            LEFT JOIN LATERAL (
+                SELECT COALESCE(
+                    (SELECT c.median_unit_price FROM region_commodities c
+                     WHERE c.region = :region AND c.item_id = rr.reagent_item_id),
+                    (SELECT NULLIF(i.purchase_price, 0) FROM items i
+                     WHERE i.id = rr.reagent_item_id),
+                    (SELECT MIN(a.median_buyout) FROM item_realm_aggregates a
+                     WHERE a.region = :region AND a.item_id = rr.reagent_item_id)
+                ) AS unit_cost
+            ) uc ON true
+            WHERE r.crafted_item_id IS NOT NULL
+            GROUP BY r.id, r.crafted_item_id
+            ON CONFLICT (region, recipe_id) DO UPDATE SET
+                crafted_item_id = EXCLUDED.crafted_item_id,
+                craft_cost = EXCLUDED.craft_cost,
+                reagents_priced = EXCLUDED.reagents_priced,
+                reagents_total = EXCLUDED.reagents_total,
+                updated_at = EXCLUDED.updated_at
+        """)
+        cost_result = await session.execute(
+            craft_cost_stmt, {"region": settings.region, "run_ts": now}
+        )
+        logger.info("Craft costs recomputed for %d recipes", cost_result.rowcount)
+
         await session.commit()
 
     elapsed = time.monotonic() - t0

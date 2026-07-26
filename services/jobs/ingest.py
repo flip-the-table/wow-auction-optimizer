@@ -36,6 +36,7 @@ from packages.shared.models import (
     ItemMetadataStatus,
     ItemRealmAggregate,
     Realm,
+    RegionCommodity,
     Snapshot,
 )
 from packages.shared.redis_client import get_redis, close_redis
@@ -435,6 +436,81 @@ async def ingest_realm_auctions(
     return len(auctions), item_ids
 
 
+async def ingest_commodities(client: BlizzardClient, session_factory, settings) -> int:
+    """
+    Ingest region-wide commodity auctions (herbs, ore, cloth — most reagents).
+
+    Commodities do NOT appear in per-realm auction feeds; this endpoint is the
+    only source of reagent prices for craft-cost computation.
+
+    Returns number of distinct commodity items upserted.
+    """
+    now = datetime.now(timezone.utc)
+    try:
+        data = await client.get_commodities()
+    except Exception as e:
+        logger.error("Failed to fetch commodities: %s", e)
+        return 0
+
+    if data is NOT_MODIFIED:
+        logger.info("Commodities: 304 Not Modified, skipping")
+        return 0
+
+    auctions = data.get("auctions", [])
+    logger.info("Commodities: %d auctions fetched", len(auctions))
+
+    # Aggregate per item: quantity-weighted stats on unit_price
+    item_data: dict[int, dict] = {}
+    for auction in auctions:
+        item_id = auction.get("item", {}).get("id")
+        unit_price = auction.get("unit_price") or 0
+        quantity = auction.get("quantity", 1)
+        if item_id is None or unit_price <= 0:
+            continue
+        entry = item_data.setdefault(
+            item_id, {"prices": [], "listing_count": 0, "total_quantity": 0}
+        )
+        entry["prices"].append(unit_price)
+        entry["listing_count"] += 1
+        entry["total_quantity"] += quantity
+
+    rows = []
+    for item_id, d in item_data.items():
+        prices = sorted(d["prices"])
+        rows.append({
+            "region": settings.region,
+            "item_id": item_id,
+            "listing_count": d["listing_count"],
+            "total_quantity": d["total_quantity"],
+            "min_unit_price": prices[0],
+            "median_unit_price": int(statistics.median(prices)),
+            "updated_at": now,
+        })
+
+    async with session_factory() as session:
+        upsert_sql = text("""
+            INSERT INTO region_commodities (
+                region, item_id, listing_count, total_quantity,
+                min_unit_price, median_unit_price, updated_at
+            ) VALUES (
+                :region, :item_id, :listing_count, :total_quantity,
+                :min_unit_price, :median_unit_price, :updated_at
+            )
+            ON CONFLICT (region, item_id) DO UPDATE SET
+                listing_count = EXCLUDED.listing_count,
+                total_quantity = EXCLUDED.total_quantity,
+                min_unit_price = EXCLUDED.min_unit_price,
+                median_unit_price = EXCLUDED.median_unit_price,
+                updated_at = EXCLUDED.updated_at
+        """)
+        for batch_start in range(0, len(rows), 500):
+            await session.execute(upsert_sql, rows[batch_start:batch_start + 500])
+        await session.commit()
+
+    logger.info("Commodities: %d distinct items upserted", len(rows))
+    return len(rows)
+
+
 async def queue_unresolved_items(session_factory, item_ids: set[int]):
     """Upsert item_metadata_status for newly seen items."""
     if not item_ids:
@@ -506,7 +582,10 @@ async def run_ingest():
                 fail_count += 1
                 continue
 
-        # Step 3: Queue unresolved items for metadata
+        # Step 3: Ingest region-wide commodities (reagent prices for craft costs)
+        await ingest_commodities(client, session_factory, settings)
+
+        # Step 4: Queue unresolved items for metadata
         await queue_unresolved_items(session_factory, all_item_ids)
 
         elapsed = time.monotonic() - t0
