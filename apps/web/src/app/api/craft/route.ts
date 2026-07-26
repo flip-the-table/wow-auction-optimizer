@@ -165,7 +165,7 @@ export async function GET(request: NextRequest) {
         (user_sell_price * crafted_quantity * ${1 - AH_CUT} - craft_cost)::bigint as user_margin,
         -- Expected gold/day: per-unit profit x est. units sold/day. Lottery
         -- listings (huge margin, zero churn) rank last where they belong.
-        ((sell_price * ${1 - AH_CUT} - craft_cost / GREATEST(crafted_quantity, 0.01)) * demand_per_day)::bigint
+        ((sell_price::float * ${1 - AH_CUT}::float - craft_cost / GREATEST(crafted_quantity, 0.01)) * demand_per_day)::bigint
           as expected_daily_gold
       FROM best
       ORDER BY expected_daily_gold DESC NULLS LAST, margin DESC
