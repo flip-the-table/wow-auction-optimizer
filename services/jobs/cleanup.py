@@ -91,10 +91,14 @@ async def run_cleanup():
             before_snapshots, after_snapshots, deleted_snapshots,
         )
 
-        # Prune old daily history rows (table otherwise grows without bound)
+        # Prune old daily history rows (table otherwise grows without bound).
+        # NOTE: constant is inlined — SQLAlchemy text() does not parse a bind
+        # param immediately followed by a ::cast (":days::int" reaches Postgres raw).
         result = await conn.execute(
-            text("DELETE FROM item_realm_daily WHERE date < CURRENT_DATE - :days::int"),
-            {"days": MAX_DAILY_HISTORY_DAYS},
+            text(
+                "DELETE FROM item_realm_daily "
+                f"WHERE date < CURRENT_DATE - {int(MAX_DAILY_HISTORY_DAYS)}"
+            )
         )
         logger.info("Daily history cleanup: %d rows older than %d days deleted",
                     result.rowcount, MAX_DAILY_HISTORY_DAYS)
