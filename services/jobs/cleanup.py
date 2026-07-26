@@ -128,15 +128,31 @@ async def run_cleanup():
         else:
             logger.info("Universe prune skipped: recipe catalog not yet populated")
 
-    # VACUUM to reclaim disk space (needs autocommit)
+    # VACUUM to reclaim disk space (needs autocommit). Strictly best-effort:
+    # a whole-DB VACUUM right after multi-million-row deletes crashed the
+    # t4g.micro backend once — vacuum per table, and NEVER let a vacuum
+    # failure abort the workflow (ingest/compute must still run; autovacuum
+    # will catch up regardless).
     from sqlalchemy import create_engine
     sync_engine = create_engine(settings.database_url_sync, isolation_level="AUTOCOMMIT")
-    with sync_engine.connect() as conn:
-        logger.info("Running VACUUM...")
-        conn.execute(text("VACUUM"))
-
-        result = conn.execute(text("SELECT pg_size_pretty(pg_database_size(current_database()))"))
-        logger.info("Database size after cleanup: %s", result.scalar())
+    vacuum_tables = [
+        "snapshots",
+        "item_realm_features_latest",
+        "item_realm_aggregates",
+        "item_realm_daily",
+    ]
+    try:
+        with sync_engine.connect() as conn:
+            for table in vacuum_tables:
+                try:
+                    logger.info("VACUUM %s...", table)
+                    conn.execute(text(f"VACUUM {table}"))
+                except Exception as e:
+                    logger.warning("VACUUM %s failed (non-fatal): %s", table, e)
+            result = conn.execute(text("SELECT pg_size_pretty(pg_database_size(current_database()))"))
+            logger.info("Database size after cleanup: %s", result.scalar())
+    except Exception as e:
+        logger.warning("VACUUM phase failed (non-fatal): %s", e)
 
     sync_engine.dispose()
     await engine.dispose()
