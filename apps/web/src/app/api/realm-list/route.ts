@@ -25,12 +25,16 @@ export async function GET() {
 
     const sql = getDb();
     const rows = await sql`
-      SELECT slug, name FROM realms
+      SELECT slug, name, connected_realm_id FROM realms
       WHERE region = ${region}
       ORDER BY name
     `;
 
-    const body = rows.map((r: any) => ({ slug: r.slug, name: r.name }));
+    const body = rows.map((r: any) => ({
+      slug: r.slug,
+      name: r.name,
+      connected_realm_id: Number(r.connected_realm_id),
+    }));
     await cacheSet(cacheKey, body, CACHE_TTL);
 
     return NextResponse.json(body, {

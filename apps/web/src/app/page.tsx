@@ -6,11 +6,14 @@ import {
     HotItem,
     HotItemsResponse,
     RealmEntry,
+    RealmSlugEntry,
     fetchHotItems,
+    fetchRealmList,
     fetchRealms,
     formatGold,
     formatZ,
     formatPct,
+    nextRefreshLabel,
     qualityColor,
     timeAgo,
 } from '@/lib/api';
@@ -84,6 +87,35 @@ function SizzleDisplay({ score }: { score: number | null }) {
                 <div className="hotness-bar-fill" style={{ width: `${normalizedPct}%` }} />
             </div>
         </div>
+    );
+}
+
+// --- Verdict chip: plain-language read of the price/demand stats ---
+function RadarVerdict({ item }: { item: HotItem }) {
+    const pz = item.price_z ?? 0;
+    const dz = item.demand_z ?? 0;
+    const stats = `Price ${pz >= 0 ? '+' : ''}${pz.toFixed(1)}σ, demand ${dz >= 0 ? '+' : ''}${dz.toFixed(1)}σ vs this item's own normal.`;
+    let label: string, cls: string, advice: string;
+    if (pz >= 2 && dz >= 0.5) {
+        label = '🔥 Sell now'; cls = 'positive';
+        advice = 'Price and demand are both well above normal — list your stock.';
+    } else if (pz >= 2) {
+        label = '💰 Price spike'; cls = 'positive';
+        advice = 'Price is spiking without matching demand — sell into it before it corrects.';
+    } else if (dz >= 1.5 && pz < 1) {
+        label = '📈 Demand rising'; cls = 'positive';
+        advice = 'Demand is climbing while price hasn’t moved yet — consider stocking up.';
+    } else if (pz <= -1.5) {
+        label = '🧊 Below normal'; cls = 'neutral';
+        advice = 'Price is below its normal range — a chance to buy and hold.';
+    } else {
+        label = '➖ Steady'; cls = 'neutral';
+        advice = 'Trading close to its normal range.';
+    }
+    return (
+        <span className={`stat-badge ${cls}`} title={`${advice} ${stats}`} style={{ whiteSpace: 'nowrap' }}>
+            {label}
+        </span>
     );
 }
 
@@ -241,6 +273,20 @@ function HomePageInner() {
             .catch(() => { }); // silently fail
     }, []);
 
+    // "My realm" quick filter — uses the character saved on the /craft page
+    const [myRealm, setMyRealm] = useState<{ id: number; name: string; charName: string } | null>(null);
+    useEffect(() => {
+        let saved: { name?: string; realmSlug?: string } | null = null;
+        try { saved = JSON.parse(localStorage.getItem('ftt-character') ?? 'null'); } catch { }
+        if (!saved?.realmSlug || !saved?.name) return;
+        fetchRealmList()
+            .then((list: RealmSlugEntry[]) => {
+                const entry = list.find(r => r.slug === saved!.realmSlug);
+                if (entry) setMyRealm({ id: entry.connected_realm_id, name: entry.name, charName: saved!.name! });
+            })
+            .catch(() => { });
+    }, []);
+
     // Sort items
     const sortedItems = useMemo(() => {
         if (!data) return [];
@@ -280,7 +326,7 @@ function HomePageInner() {
                                 </p>
                                 {data && (
                                     <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                                        {data.region.toUpperCase()} &middot; {data.total_count} items &middot; {data.baseline_window_days}d baseline &middot; Updated {timeAgo(data.generated_at)}
+                                        {data.region.toUpperCase()} &middot; {data.total_count} items &middot; {data.baseline_window_days}d baseline &middot; Updated {timeAgo(data.generated_at)} &middot; Next data ~{nextRefreshLabel()}
                                     </span>
                                 )}
                             </>
@@ -292,6 +338,16 @@ function HomePageInner() {
             {/* Filters */}
             <div className="filter-bar">
 
+
+                {myRealm && selectedRealm !== myRealm.id && (
+                    <button
+                        className="btn btn-secondary"
+                        onClick={() => setSelectedRealm(myRealm.id)}
+                        title={`Filter to ${myRealm.name} — ${myRealm.charName}'s realm`}
+                    >
+                        ⚔ My realm: {myRealm.name}
+                    </button>
+                )}
 
                 <select
                     className="filter-select"
@@ -395,7 +451,7 @@ function HomePageInner() {
                         <table className="data-table">
                             <thead>
                                 <tr>
-                                    {['Item', 'Best Realm', 'Price', 'Qty', 'Price Dev', 'Demand Dev', 'Sizzle', 'Confidence', 'Updated'].map(
+                                    {['Item', 'Best Realm', 'Price', 'Qty', 'Price Dev', 'Demand Dev', 'Sizzle', 'Verdict', 'Confidence', 'Updated'].map(
                                         (h) => (
                                             <th key={h}>{h}</th>
                                         )
@@ -405,7 +461,7 @@ function HomePageInner() {
                             <tbody>
                                 {Array.from({ length: 10 }).map((_, i) => (
                                     <tr key={i}>
-                                        {Array.from({ length: 9 }).map((_, j) => (
+                                        {Array.from({ length: 10 }).map((_, j) => (
                                             <td key={j}>
                                                 <div className="skeleton" style={{ height: 18, width: 60 + (i % 5) * 15 }} />
                                             </td>
@@ -442,6 +498,7 @@ function HomePageInner() {
                                     <th onClick={() => handleSort('sizzle')} className={sortKey === 'sizzle' ? 'sorted' : ''} title="Combined score = 0.65 × demand_z + 0.35 × price_z. Higher = more sizzle">
                                         Sizzle 🔥 <SortIndicator column="sizzle" />
                                     </th>
+                                    <th title="Plain-language read of the price/demand stats — hover a chip for the reasoning">Verdict</th>
                                     <th onClick={() => handleSort('confidence')} className={sortKey === 'confidence' ? 'sorted' : ''} title="Data quality: based on snapshot count, listing volume, and price stability">
                                         Confidence <SortIndicator column="confidence" />
                                     </th>
@@ -585,6 +642,11 @@ function HomePageInner() {
                                                     <SizzleDisplay score={item.sizzle_score} />
                                                 </td>
 
+                                                {/* Verdict */}
+                                                <td>
+                                                    <RadarVerdict item={item} />
+                                                </td>
+
                                                 {/* Confidence */}
                                                 <td>
                                                     <ConfidenceBar value={item.confidence} />
@@ -623,6 +685,7 @@ function HomePageInner() {
                                                     <td style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
                                                         {alt.sell_suitability_score != null ? alt.sell_suitability_score.toFixed(2) : '—'}
                                                     </td>
+                                                    <td></td>
                                                     <td>
                                                         <ConfidenceBar value={alt.confidence} />
                                                     </td>
@@ -635,7 +698,7 @@ function HomePageInner() {
 
                                 {sortedItems.length === 0 && !loading && (
                                     <tr>
-                                        <td colSpan={9} style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
+                                        <td colSpan={10} style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
                                             No items found. Try adjusting filters, or run the ingest and compute jobs first.
                                         </td>
                                     </tr>
@@ -685,7 +748,7 @@ export default function HomePage() {
                     <table className="data-table">
                         <thead>
                             <tr>
-                                {['Item', 'Best Realm', 'Price', 'Qty', 'Price Dev', 'Demand Dev', 'Sizzle', 'Confidence', 'Updated'].map(
+                                {['Item', 'Best Realm', 'Price', 'Qty', 'Price Dev', 'Demand Dev', 'Sizzle', 'Verdict', 'Confidence', 'Updated'].map(
                                     (h) => <th key={h}>{h}</th>
                                 )}
                             </tr>
@@ -693,7 +756,7 @@ export default function HomePage() {
                         <tbody>
                             {Array.from({ length: 10 }).map((_, i) => (
                                 <tr key={i}>
-                                    {Array.from({ length: 9 }).map((_, j) => (
+                                    {Array.from({ length: 10 }).map((_, j) => (
                                         <td key={j}>
                                             <div className="skeleton" style={{ height: 18, width: 60 + (i % 5) * 15 }} />
                                         </td>

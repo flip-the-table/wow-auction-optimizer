@@ -25,6 +25,9 @@ export async function GET(request: NextRequest) {
     const decorOnly = searchParams.get('decor') === '1';
     const professionRaw = intParam(searchParams.get('profession'), NaN);
     const profession = Number.isFinite(professionRaw) ? professionRaw : null;
+    // Optional: the user's connected realm — adds "your realm" sell/margin
+    const userRealmRaw = intParam(searchParams.get('realm'), NaN);
+    const userRealm = Number.isFinite(userRealmRaw) ? userRealmRaw : null;
     const search = searchParams.get('search') || null;
 
     let searchPattern: string | null = null;
@@ -33,7 +36,7 @@ export async function GET(request: NextRequest) {
       if (sanitized.length > 0) searchPattern = `%${sanitized}%`;
     }
 
-    const cacheKey = `craft:${region}:${limit}:${decorOnly}:${profession ?? 'all'}:${searchPattern ?? ''}`;
+    const cacheKey = `craft:${region}:${limit}:${decorOnly}:${profession ?? 'all'}:${userRealm ?? 'none'}:${searchPattern ?? ''}`;
     const cached = await cacheGet<any>(cacheKey);
     if (cached) {
       return NextResponse.json(cached, {
@@ -131,16 +134,24 @@ export async function GET(request: NextRequest) {
       best AS (
         -- recipe_market is precomputed by the compute job — touching the large
         -- aggregates table at request time caused 504s on the small instance.
+        -- ua: the user's realm market (PK lookup; -1 sentinel matches nothing).
         SELECT
           s.*,
           bm.connected_realm_id,
           bm.sell_price,
           bm.market_quantity,
           bm.market_listings,
-          ri.name as realm_name
+          ri.name as realm_name,
+          ua.median_buyout as user_sell_price,
+          ua.total_quantity as user_market_quantity
         FROM sellable s
         JOIN recipe_market bm
           ON bm.region = ${region} AND bm.crafted_item_id = s.crafted_item_id
+        LEFT JOIN item_realm_aggregates ua
+          ON ua.region = ${region}
+         AND ua.connected_realm_id = ${userRealm ?? -1}
+         AND ua.item_id = s.crafted_item_id
+         AND ua.median_buyout > 0
         LEFT JOIN (
           SELECT connected_realm_id, MIN(name) as name
           FROM realms GROUP BY connected_realm_id
@@ -148,9 +159,10 @@ export async function GET(request: NextRequest) {
       )
       SELECT
         *,
-        (sell_price * crafted_quantity * ${1 - AH_CUT} - craft_cost)::bigint as margin
+        (sell_price * crafted_quantity * ${1 - AH_CUT} - craft_cost)::bigint as margin,
+        (user_sell_price * crafted_quantity * ${1 - AH_CUT} - craft_cost)::bigint as user_margin
       FROM best
-      ORDER BY margin DESC
+      ORDER BY ${userRealm !== null ? sql`user_margin DESC NULLS LAST,` : sql``} margin DESC
       LIMIT ${limit}
     `;
 
@@ -212,6 +224,9 @@ export async function GET(request: NextRequest) {
       },
       margin: Number(row.margin),
       margin_pct: Number(row.craft_cost) > 0 ? Number(row.margin) / Number(row.craft_cost) : null,
+      user_sell_price: row.user_sell_price != null ? Number(row.user_sell_price) : null,
+      user_market_quantity: row.user_market_quantity != null ? Number(row.user_market_quantity) : null,
+      user_margin: row.user_margin != null ? Number(row.user_margin) : null,
     }));
 
     // Profession list for the filter dropdown (cheap, cached with response)

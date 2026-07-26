@@ -11,6 +11,7 @@ import {
     fetchCraftable,
     fetchRealmList,
     formatGold,
+    nextRefreshLabel,
     qualityColor,
     timeAgo,
 } from '@/lib/api';
@@ -43,19 +44,52 @@ function GoldAmount({ copper }: { copper: number | null }) {
     );
 }
 
+// --- Verdict chip: turn margin stats into a plain-language recommendation ---
+function CraftVerdict({ r, useUserRealm }: { r: CraftRecipe; useUserRealm: boolean }) {
+    const margin = useUserRealm && r.user_margin != null ? r.user_margin : r.margin;
+    const pct = r.craft_cost > 0 ? margin / r.craft_cost : null;
+    if (pct === null) return <span className="stat-badge neutral">—</span>;
+    const where = useUserRealm && r.user_margin != null ? 'on your realm' : 'on the best realm';
+    const pctText = `${pct >= 0 ? '+' : ''}${(pct * 100).toFixed(0)}%`;
+    let label: string, cls: string, title: string;
+    if (pct >= 0.5) {
+        label = `🔥 Craft now ${pctText}`;
+        cls = 'positive';
+        title = `High margin: each craft returns ${pctText} over material cost ${where}.`;
+    } else if (pct >= 0.15) {
+        label = `✅ Profitable ${pctText}`;
+        cls = 'positive';
+        title = `Solid margin of ${pctText} over material cost ${where}.`;
+    } else if (pct >= 0) {
+        label = `➖ Thin ${pctText}`;
+        cls = 'neutral';
+        title = `Margin of only ${pctText} ${where} — one undercut from a loss.`;
+    } else {
+        label = `🚫 Loss ${pctText}`;
+        cls = 'negative';
+        title = `Crafting costs more than it sells for ${where}.`;
+    }
+    return <span className={`stat-badge ${cls}`} title={title} style={{ whiteSpace: 'nowrap' }}>{label}</span>;
+}
+
 // --- Recipe Margin Table ---
 function RecipeTable({
     recipes,
     expanded,
     onToggleExpand,
     emptyMessage,
+    showUserRealm,
+    userRealmName,
 }: {
     recipes: CraftRecipe[];
     expanded: Set<number>;
     onToggleExpand: (recipeId: number) => void;
     emptyMessage: string;
+    showUserRealm: boolean;
+    userRealmName?: string;
 }) {
     const router = useRouter();
+    const colCount = showUserRealm ? 7 : 6;
     return (
         <div className="data-table-wrapper fade-in">
             <table className="data-table">
@@ -65,8 +99,11 @@ function RecipeTable({
                         <th title="Recipe, profession and expansion tier">Recipe</th>
                         <th title="Sum of reagent costs (region commodity prices, vendor prices, or cheapest realm AH)">Craft Cost</th>
                         <th title="Median buyout on the best realm with a real market (3+ listings, price within 5x the cross-realm median)">Sell (Best Realm)</th>
-                        <th title="Sell price x quantity x 0.95 (AH cut) - craft cost">Margin</th>
-                        <th title="Margin as % of craft cost">Margin %</th>
+                        {showUserRealm && (
+                            <th title={`Sell price and margin on ${userRealmName ?? 'your realm'} — where you can actually post`}>Your Realm</th>
+                        )}
+                        <th title="Sell price x quantity x 0.95 (AH cut) - craft cost, on the best realm">Margin</th>
+                        <th title="Plain-language recommendation based on margin % over cost">Verdict</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -131,18 +168,32 @@ function RecipeTable({
                                             {' · '}{r.best_realm.market_quantity} listed
                                         </div>
                                     </td>
+                                    {showUserRealm && (
+                                        <td>
+                                            {r.user_sell_price != null ? (
+                                                <>
+                                                    <GoldAmount copper={r.user_sell_price} />
+                                                    <div style={{ fontSize: '0.72rem', marginTop: 2, color: (r.user_margin ?? 0) > 0 ? 'var(--accent-emerald)' : 'var(--accent-red)' }}>
+                                                        margin: <GoldAmount copper={r.user_margin ?? null} />
+                                                    </div>
+                                                </>
+                                            ) : (
+                                                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }} title="This item has no listings on your realm — you could be first, but there's no price signal">
+                                                    not listed
+                                                </span>
+                                            )}
+                                        </td>
+                                    )}
                                     <td style={{ fontWeight: 700 }}>
                                         <GoldAmount copper={r.margin} />
                                     </td>
                                     <td>
-                                        <span className={`stat-badge ${r.margin > 0 ? 'positive' : 'negative'}`}>
-                                            {r.margin_pct != null ? `${(r.margin_pct * 100).toFixed(0)}%` : '--'}
-                                        </span>
+                                        <CraftVerdict r={r} useUserRealm={showUserRealm} />
                                     </td>
                                 </tr>
                                 {isExpanded && (
                                     <tr style={{ background: 'rgba(255,255,255,0.02)' }}>
-                                        <td colSpan={6} style={{ padding: '8px 14px 12px 56px' }}>
+                                        <td colSpan={colCount} style={{ padding: '8px 14px 12px 56px' }}>
                                             <table style={{ fontSize: '0.78rem', borderCollapse: 'collapse' }}>
                                                 <tbody>
                                                     {r.reagents.map((rg) => (
@@ -168,7 +219,7 @@ function RecipeTable({
 
                     {recipes.length === 0 && (
                         <tr>
-                            <td colSpan={6} style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
+                            <td colSpan={colCount} style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
                                 {emptyMessage}
                             </td>
                         </tr>
@@ -205,6 +256,13 @@ export default function CraftPage() {
         [charData]
     );
 
+    // The user's connected realm — unlocks "Your Realm" margins
+    const userRealmEntry = useMemo(
+        () => (charData ? realmList.find(r => r.slug === charData.character.realm_slug) : undefined),
+        [charData, realmList]
+    );
+    const userRealmId = userRealmEntry?.connected_realm_id;
+
     // Search debounce
     const searchTimeoutRef = useRef<NodeJS.Timeout>();
     const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -222,6 +280,7 @@ export default function CraftPage() {
                 decorOnly,
                 profession,
                 search: debouncedSearch || undefined,
+                realm: userRealmId,
             });
             setData(result);
         } catch (err: any) {
@@ -229,7 +288,7 @@ export default function CraftPage() {
         } finally {
             setLoading(false);
         }
-    }, [limit, decorOnly, profession, debouncedSearch]);
+    }, [limit, decorOnly, profession, debouncedSearch, userRealmId]);
 
     useEffect(() => {
         loadData();
@@ -325,7 +384,7 @@ export default function CraftPage() {
                     </p>
                     {data && (
                         <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                            {data.region.toUpperCase()} &middot; {data.total_count} recipes &middot; Updated {timeAgo(data.generated_at)}
+                            {data.region.toUpperCase()} &middot; {data.total_count} recipes &middot; Updated {timeAgo(data.generated_at)} &middot; Next data ~{nextRefreshLabel()}
                         </span>
                     )}
                 </div>
@@ -479,7 +538,7 @@ export default function CraftPage() {
                     <table className="data-table">
                         <thead>
                             <tr>
-                                {['Item', 'Recipe', 'Craft Cost', 'Sell (Best Realm)', 'Margin', 'Margin %'].map((h) => (
+                                {['Item', 'Recipe', 'Craft Cost', 'Sell (Best Realm)', 'Margin', 'Verdict'].map((h) => (
                                     <th key={h}>{h}</th>
                                 ))}
                             </tr>
@@ -512,6 +571,8 @@ export default function CraftPage() {
                                 expanded={expanded}
                                 onToggleExpand={toggleExpand}
                                 emptyMessage="None of the listed recipes are known by this character. Try widening the filters."
+                                showUserRealm={userRealmId != null}
+                                userRealmName={userRealmEntry?.name}
                             />
                             <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--accent-gold)', margin: '20px 0 8px' }}>
                                 📈 Worth learning next ({unknownRecipes.length})
@@ -521,6 +582,8 @@ export default function CraftPage() {
                                 expanded={expanded}
                                 onToggleExpand={toggleExpand}
                                 emptyMessage="No unlearned recipes with complete pricing match the filters."
+                                showUserRealm={userRealmId != null}
+                                userRealmName={userRealmEntry?.name}
                             />
                         </>
                     ) : (
@@ -533,6 +596,8 @@ export default function CraftPage() {
                                     ? 'No decor-crafting recipes exist in the professions catalog yet — uncheck "Decor only" to see all craftable margins.'
                                     : 'No craftable recipes with complete pricing found. The recipe catalog may not be ingested yet.'
                             }
+                            showUserRealm={userRealmId != null}
+                            userRealmName={userRealmEntry?.name}
                         />
                     )}
                 </div>

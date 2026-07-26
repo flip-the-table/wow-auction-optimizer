@@ -188,6 +188,9 @@ export interface CraftRecipe {
     };
     margin: number;
     margin_pct: number | null;
+    user_sell_price?: number | null;
+    user_market_quantity?: number | null;
+    user_margin?: number | null;
 }
 
 export interface CraftResponse {
@@ -204,12 +207,14 @@ export async function fetchCraftable(params: {
     decorOnly?: boolean;
     profession?: number;
     search?: string;
+    realm?: number;
 }): Promise<CraftResponse> {
     const searchParams = new URLSearchParams();
     if (params.limit) searchParams.set('limit', String(params.limit));
     if (params.decorOnly) searchParams.set('decor', '1');
     if (params.profession) searchParams.set('profession', String(params.profession));
     if (params.search) searchParams.set('search', params.search);
+    if (params.realm) searchParams.set('realm', String(params.realm));
 
     const res = await fetch(`/api/craft?${searchParams}`, {
         next: { revalidate: 60 },
@@ -240,6 +245,7 @@ export interface CharacterProfessions {
 export interface RealmSlugEntry {
     slug: string;
     name: string;
+    connected_realm_id: number;
 }
 
 export async function fetchCharacter(realmSlug: string, name: string): Promise<CharacterProfessions> {
@@ -300,6 +306,22 @@ export function qualityColor(quality: string | null): string {
     if (q === 'artifact') return 'var(--quality-artifact)';
     if (q === 'heirloom') return 'var(--quality-heirloom)';
     return 'var(--quality-common)';
+}
+
+/** Local-time label for the next scheduled data refresh (cron: 02/10/18 UTC) */
+export function nextRefreshLabel(): string {
+    const REFRESH_HOURS_UTC = [2, 10, 18];
+    const now = new Date();
+    const next = new Date(now);
+    const hour = now.getUTCHours();
+    const nextHour = REFRESH_HOURS_UTC.find((h) => h > hour);
+    if (nextHour !== undefined) {
+        next.setUTCHours(nextHour, 0, 0, 0);
+    } else {
+        next.setUTCDate(next.getUTCDate() + 1);
+        next.setUTCHours(REFRESH_HOURS_UTC[0], 0, 0, 0);
+    }
+    return next.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
 /** Relative time string */

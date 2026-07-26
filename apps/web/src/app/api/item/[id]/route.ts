@@ -188,15 +188,18 @@ export async function GET(
         }
       })(),
 
-      // 6. All-realm aggregate stats
+      // 6. All-realm aggregate stats. Price stats only consider realms with a
+      // real market (3+ listings) — a single gold-cap troll listing otherwise
+      // skews min/max/mean. Counts/availability stay unfiltered.
       sql`
       SELECT
         COUNT(*)::int as realm_count,
-        AVG(a.median_buyout)::bigint as mean_price,
-        PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY a.median_buyout)::bigint as median_price,
+        (AVG(a.median_buyout) FILTER (WHERE a.listing_count >= 3))::bigint as mean_price,
+        (PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY a.median_buyout)
+          FILTER (WHERE a.listing_count >= 3))::bigint as median_price,
         SUM(a.total_quantity)::int as total_available,
-        MIN(a.median_buyout)::bigint as min_price,
-        MAX(a.median_buyout)::bigint as max_price
+        (MIN(a.median_buyout) FILTER (WHERE a.listing_count >= 3))::bigint as min_price,
+        (MAX(a.median_buyout) FILTER (WHERE a.listing_count >= 3))::bigint as max_price
       FROM item_realm_aggregates a
       WHERE a.item_id = ${itemId} AND a.region = ${region}
     `,
