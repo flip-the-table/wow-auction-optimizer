@@ -8,7 +8,7 @@ applications:
             - npm install
             # Write runtime env vars to .env.production for Next.js SSR Lambda
             # Using node to avoid bash special character expansion issues
-            - node -e "const fs=require('fs'); const vars=['DATABASE_URL','REGION','UPSTASH_REDIS_REST_URL','UPSTASH_REDIS_REST_TOKEN']; const content=vars.filter(k=>process.env[k]).map(k=>k+'='+process.env[k]).join('\n'); fs.writeFileSync('.env.production', content); console.log('Wrote .env.production with', vars.length, 'vars');"
+            - node -e "const fs=require('fs'); const vars=['DATABASE_URL','REGION','UPSTASH_REDIS_REST_URL','UPSTASH_REDIS_REST_TOKEN','BLIZZARD_CLIENT_ID','BLIZZARD_CLIENT_SECRET']; const content=vars.filter(k=>process.env[k]).map(k=>k+'='+process.env[k]).join('\n'); fs.writeFileSync('.env.production', content); console.log('Wrote .env.production with', vars.length, 'vars');"
         build:
           commands:
             - npm run build

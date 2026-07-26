@@ -218,6 +218,44 @@ export async function fetchCraftable(params: {
     return res.json();
 }
 
+export interface CharacterProfessionTier {
+    tier_id: number | null;
+    tier_name: string | null;
+    skill_points: number | null;
+    max_skill_points: number | null;
+    known_recipe_count: number;
+}
+
+export interface CharacterProfessions {
+    character: { name: string; realm_slug: string; region: string };
+    professions: {
+        profession_id: number | null;
+        profession_name: string | null;
+        tiers: CharacterProfessionTier[];
+    }[];
+    known_recipe_ids: number[];
+    generated_at: string;
+}
+
+export interface RealmSlugEntry {
+    slug: string;
+    name: string;
+}
+
+export async function fetchCharacter(realmSlug: string, name: string): Promise<CharacterProfessions> {
+    const searchParams = new URLSearchParams({ realm: realmSlug, name });
+    const res = await fetch(`/api/character?${searchParams}`, { cache: 'no-store' });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body?.error || `API error: ${res.status}`);
+    return body;
+}
+
+export async function fetchRealmList(): Promise<RealmSlugEntry[]> {
+    const res = await fetch(`/api/realm-list`, { next: { revalidate: 3600 } });
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    return res.json();
+}
+
 export async function fetchHealth(): Promise<HealthResponse> {
     const res = await fetch(`/api/health`, { cache: 'no-store' });
     if (!res.ok) throw new Error(`API error: ${res.status}`);
