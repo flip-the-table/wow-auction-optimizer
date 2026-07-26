@@ -284,6 +284,19 @@ async def run_compute():
         # serves this directly — running the aggregates window scan at request
         # time caused 504s on the small RDS instance.
         market_stmt = text("""
+            WITH craftable AS (
+                SELECT DISTINCT crafted_item_id AS item_id FROM recipes
+                WHERE crafted_item_id IS NOT NULL
+            ),
+            cross_realm AS (
+                -- Median of realm medians: the sanity anchor per item
+                SELECT a.item_id,
+                       PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY a.median_buyout) AS cross_med
+                FROM item_realm_aggregates a
+                JOIN craftable c ON c.item_id = a.item_id
+                WHERE a.region = :region AND a.median_buyout > 0
+                GROUP BY a.item_id
+            )
             INSERT INTO recipe_market (
                 region, crafted_item_id, connected_realm_id,
                 sell_price, market_quantity, market_listings, updated_at
@@ -298,12 +311,14 @@ async def run_compute():
                         PARTITION BY a.item_id ORDER BY a.median_buyout DESC
                     ) as rn
                 FROM item_realm_aggregates a
+                JOIN craftable c ON c.item_id = a.item_id
+                JOIN cross_realm x ON x.item_id = a.item_id
                 WHERE a.region = :region
                   AND a.median_buyout > 0
-                  AND a.item_id IN (
-                      SELECT DISTINCT crafted_item_id FROM recipes
-                      WHERE crafted_item_id IS NOT NULL
-                  )
+                  -- Realistic-price guards: gold-cap troll listings on dead
+                  -- markets otherwise dominate the margin ranking.
+                  AND a.listing_count >= 3
+                  AND a.median_buyout <= x.cross_med * 5
             ) ranked
             WHERE rn = 1
             ON CONFLICT (region, crafted_item_id) DO UPDATE SET

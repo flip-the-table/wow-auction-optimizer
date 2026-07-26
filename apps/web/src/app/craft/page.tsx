@@ -64,7 +64,7 @@ function RecipeTable({
                         <th title="The crafted item">Item</th>
                         <th title="Recipe, profession and expansion tier">Recipe</th>
                         <th title="Sum of reagent costs (region commodity prices, vendor prices, or cheapest realm AH)">Craft Cost</th>
-                        <th title="Median buyout on the realm where this item sells highest">Sell (Best Realm)</th>
+                        <th title="Median buyout on the best realm with a real market (3+ listings, price within 5x the cross-realm median)">Sell (Best Realm)</th>
                         <th title="Sell price x quantity x 0.95 (AH cut) - craft cost">Margin</th>
                         <th title="Margin as % of craft cost">Margin %</th>
                     </tr>
