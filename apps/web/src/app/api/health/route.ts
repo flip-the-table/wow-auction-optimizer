@@ -47,6 +47,42 @@ export async function GET() {
 
   const redisOk = await cachePing();
 
+  // Implied-material valuation pipeline health (null until schema/data exist)
+  let lumber: any = null;
+  try {
+    const [row] = await sql`
+      SELECT
+        (SELECT source_version FROM decor_recipe_sources s
+          WHERE EXISTS (SELECT 1 FROM decor_recipes r WHERE r.source_id = s.id AND r.active)
+          ORDER BY s.created_at DESC LIMIT 1) as active_source_version,
+        (SELECT formula_version FROM lumber_formula_versions
+          ORDER BY created_at DESC LIMIT 1) as active_formula_version,
+        (SELECT MAX(created_at) FROM decor_recipe_sources) as last_decor_recipe_load_at,
+        (SELECT MAX(computed_at) FROM material_value_summaries) as last_material_value_compute_at,
+        (SELECT COUNT(*) FROM decor_recipe_valuations
+          WHERE eligibility_status = 'ELIGIBLE') as eligible_recipe_count,
+        (SELECT COUNT(*) FROM decor_recipe_valuations
+          WHERE eligibility_status = 'EXCLUDED') as excluded_recipe_count,
+        (SELECT COUNT(*) FROM decor_recipe_valuations
+          WHERE exclusion_reasons::text LIKE '%STALE%') as stale_recipe_count,
+        (SELECT COUNT(*) FROM decor_recipe_valuations
+          WHERE exclusion_reasons::text LIKE '%MISSING_REAGENT_PRICE%') as missing_price_count
+    `;
+    lumber = {
+      feature_enabled: process.env.LUMBER_FEATURE_ENABLED === 'true',
+      active_decor_recipe_source_version: row?.active_source_version ?? null,
+      active_formula_version: row?.active_formula_version ?? null,
+      last_decor_recipe_load_at: row?.last_decor_recipe_load_at ?? null,
+      last_material_value_compute_at: row?.last_material_value_compute_at ?? null,
+      eligible_recipe_count: Number(row?.eligible_recipe_count ?? 0),
+      excluded_recipe_count: Number(row?.excluded_recipe_count ?? 0),
+      stale_recipe_count: Number(row?.stale_recipe_count ?? 0),
+      missing_price_count: Number(row?.missing_price_count ?? 0),
+    };
+  } catch {
+    lumber = { feature_enabled: process.env.LUMBER_FEATURE_ENABLED === 'true', schema_present: false };
+  }
+
   return NextResponse.json(
     {
       status: dbOk ? 'ok' : 'degraded',
@@ -56,6 +92,7 @@ export async function GET() {
       last_compute_at: lastCompute,
       realm_count: realmCount,
       item_count: itemCount,
+      lumber,
     },
     { headers: { 'Cache-Control': 'no-store' } }
   );

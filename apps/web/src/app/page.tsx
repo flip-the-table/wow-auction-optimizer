@@ -405,6 +405,14 @@ function HomePageInner() {
                 >
                     ⚒ Craftable Margins
                 </a>
+                <a
+                    href="/lumber"
+                    className="btn btn-secondary"
+                    style={{ textDecoration: 'none' }}
+                    title="Modeled opportunity value of lumber inferred from decor conversions"
+                >
+                    🪵 Lumber Value
+                </a>
             </div>
 
             {/* Error */}

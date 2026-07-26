@@ -6,16 +6,21 @@ from datetime import datetime
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
+    CheckConstraint,
     Column,
     Date,
     DateTime,
     Float,
+    ForeignKey,
     Index,
     Integer,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase
 
 
@@ -295,6 +300,210 @@ class RecipeMarket(Base):
     updated_at = Column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+# =========================================================================
+# Implied lumber / constrained-material valuation (decor conversion engine)
+# =========================================================================
+
+class ConstrainedMaterial(Base):
+    """A non-tradeable (or otherwise constrained) crafting material, e.g.
+    a lumber type. May or may not correspond to a Blizzard item id."""
+    __tablename__ = "constrained_materials"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    material_key = Column(String(64), nullable=False, unique=True)
+    item_id = Column(Integer, ForeignKey("items.id"), nullable=True)
+    display_name = Column(String(256), nullable=False)
+    material_type = Column(String(32), nullable=False, default="LUMBER")
+    is_tradeable = Column(Boolean, nullable=False, default=False)
+    is_account_bound = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class DecorRecipeSource(Base):
+    """A versioned, curated decor-recipe mapping import. Immutable after a
+    successful import (enforced by checksum in the loader)."""
+    __tablename__ = "decor_recipe_sources"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    source_version = Column(String(64), nullable=False, unique=True)
+    game_build = Column(String(64), nullable=True)
+    effective_date = Column(Date, nullable=True)
+    source_description = Column(Text, nullable=True)
+    source_method = Column(String(64), nullable=True)
+    source_reference = Column(Text, nullable=True)
+    verified_by = Column(String(128), nullable=True)
+    verified_at = Column(DateTime(timezone=True), nullable=True)
+    checksum = Column(String(64), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class DecorRecipe(Base):
+    """A curated decor recipe (NOT from the Blizzard professions catalog,
+    which contains zero decor recipes as of 2026-07)."""
+    __tablename__ = "decor_recipes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    source_id = Column(Integer, ForeignKey("decor_recipe_sources.id"), nullable=False)
+    external_recipe_key = Column(String(128), nullable=False)
+    decor_item_id = Column(Integer, nullable=False)
+    recipe_name = Column(String(256), nullable=True)
+    crafted_quantity = Column(Float, nullable=False, default=1.0)
+    crafting_system = Column(String(64), nullable=True)
+    verification_status = Column(String(32), nullable=False, default="UNVERIFIED")
+    active = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("source_id", "external_recipe_key", name="uq_decor_recipe_source_key"),
+        Index("ix_decor_recipes_item", "decor_item_id"),
+        Index("ix_decor_recipes_source", "source_id"),
+        Index("ix_decor_recipes_active_item", "active", "decor_item_id"),
+    )
+
+
+class DecorRecipeReagent(Base):
+    """One reagent line of a curated decor recipe. Exactly one of
+    reagent_item_id / constrained_material_id is populated."""
+    __tablename__ = "decor_recipe_reagents"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    decor_recipe_id = Column(Integer, ForeignKey("decor_recipes.id"), nullable=False)
+    reagent_item_id = Column(Integer, nullable=True)
+    constrained_material_id = Column(
+        Integer, ForeignKey("constrained_materials.id"), nullable=True
+    )
+    quantity = Column(Float, nullable=False)
+    # CONSTRAINED | STANDARD | VENDOR | OPTIONAL
+    reagent_role = Column(String(16), nullable=False, default="STANDARD")
+    # REGION_COMMODITY | REALM_AUCTION | VENDOR | USER_OVERRIDE | UNPRICED
+    pricing_scope = Column(String(24), nullable=False, default="REGION_COMMODITY")
+    optional = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint(
+            "(reagent_item_id IS NULL) != (constrained_material_id IS NULL)",
+            name="ck_reagent_exactly_one_target",
+        ),
+        CheckConstraint("quantity > 0", name="ck_reagent_positive_quantity"),
+        Index("ix_decor_reagents_recipe", "decor_recipe_id"),
+    )
+
+
+class DecorRecipeValuation(Base):
+    """Precomputed per-(region, realm, recipe, material, formula) valuation.
+    Rows are written for BOTH eligible and excluded recipes so the UI can
+    explain exclusions. All money columns are integer copper."""
+    __tablename__ = "decor_recipe_valuations"
+
+    region = Column(String(16), primary_key=True)
+    connected_realm_id = Column(Integer, primary_key=True)
+    decor_recipe_id = Column(Integer, primary_key=True)
+    constrained_material_id = Column(Integer, primary_key=True)
+    formula_version = Column(String(32), primary_key=True)
+
+    # OBSERVED_LISTING inputs
+    listing_median = Column(BigInteger, nullable=True)
+    listing_min = Column(BigInteger, nullable=True)
+    listing_count = Column(Integer, nullable=True)
+    listed_quantity = Column(BigInteger, nullable=True)
+    listing_updated_at = Column(DateTime(timezone=True), nullable=True)
+
+    # MODELED revenue chain
+    realized_price_factor = Column(Float, nullable=True)
+    estimated_realized_unit_price = Column(BigInteger, nullable=True)
+    crafted_quantity = Column(Float, nullable=True)
+    gross_estimated_revenue = Column(BigInteger, nullable=True)
+    auction_house_cut = Column(Float, nullable=True)
+    net_estimated_revenue = Column(BigInteger, nullable=True)
+    expected_deposit_loss = Column(BigInteger, nullable=True)
+
+    # Reagent side
+    other_reagent_cost = Column(BigInteger, nullable=True)
+    priced_reagent_count = Column(Integer, nullable=True)
+    total_reagent_count = Column(Integer, nullable=True)
+
+    # Core output
+    constrained_material_quantity = Column(Float, nullable=True)
+    implied_value_per_material = Column(BigInteger, nullable=True)  # may be negative
+
+    # DERIVED liquidity / MODELED opportunity
+    churn_rate = Column(Float, nullable=True)
+    estimated_market_units_per_day = Column(Float, nullable=True)
+    seller_capture_factor = Column(Float, nullable=True)
+    estimated_capturable_units_per_day = Column(Float, nullable=True)
+    expected_daily_contribution = Column(BigInteger, nullable=True)
+
+    # Quality components (all 0..1)
+    freshness_score = Column(Float, nullable=True)
+    liquidity_score = Column(Float, nullable=True)
+    input_quality_score = Column(Float, nullable=True)
+    model_confidence_score = Column(Float, nullable=True)
+
+    eligibility_status = Column(String(16), nullable=False)  # ELIGIBLE | EXCLUDED
+    exclusion_reasons = Column(JSONB, nullable=True)
+    input_snapshot_json = Column(JSONB, nullable=True)
+    computed_at = Column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        Index(
+            "ix_valuations_realm_material_value",
+            "region", "connected_realm_id", "constrained_material_id",
+            implied_value_per_material.desc(),
+        ),
+        Index(
+            "ix_valuations_material_contribution",
+            "region", "constrained_material_id",
+            expected_daily_contribution.desc(),
+        ),
+        Index("ix_valuations_recipe", "decor_recipe_id"),
+        Index("ix_valuations_computed", "computed_at"),
+    )
+
+
+class MaterialValueSummary(Base):
+    """Precomputed per-(region, realm, material, formula) summary powering
+    the primary UI card without scanning valuations."""
+    __tablename__ = "material_value_summaries"
+
+    region = Column(String(16), primary_key=True)
+    connected_realm_id = Column(Integer, primary_key=True)
+    constrained_material_id = Column(Integer, primary_key=True)
+    formula_version = Column(String(32), primary_key=True)
+
+    reference_implied_value = Column(BigInteger, nullable=True)  # NULL when unavailable
+    best_conversion_value = Column(BigInteger, nullable=True)
+    conservative_implied_value = Column(BigInteger, nullable=True)
+    eligible_recipe_count = Column(Integer, nullable=False, default=0)
+    excluded_recipe_count = Column(Integer, nullable=False, default=0)
+
+    weighted_freshness_score = Column(Float, nullable=True)
+    weighted_liquidity_score = Column(Float, nullable=True)
+    model_confidence_score = Column(Float, nullable=True)
+
+    top_recipe_id = Column(Integer, nullable=True)
+    computed_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class LumberFormulaVersion(Base):
+    """Persisted formula-version registry. Parameters stored here are the
+    immutable meaning of a version; compute aborts if the configured params
+    for an existing version differ from this record."""
+    __tablename__ = "lumber_formula_versions"
+
+    formula_version = Column(String(32), primary_key=True)
+    params = Column(JSONB, nullable=False)
+    code_release = Column(String(64), nullable=True)
+    effective_date = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
 class ItemRealmFeaturesLatest(Base):

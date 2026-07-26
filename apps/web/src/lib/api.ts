@@ -264,6 +264,150 @@ export async function fetchRealmList(): Promise<RealmSlugEntry[]> {
     return res.json();
 }
 
+// --- Implied constrained-material ("lumber") valuation ---
+// Data classifications surfaced by the API:
+//   OBSERVED_LISTING | DERIVED | MODELED | CURATED_SOURCE | USER_PROVIDED
+
+export interface MaterialInfo {
+    material_key: string;
+    display_name: string;
+    material_type: string;
+    is_tradeable: boolean;
+    is_account_bound: boolean;
+}
+
+export interface LumberAssumptions {
+    formula_version: string;
+    realized_price_factor: number;
+    ah_cut: number;
+    deposit_loss_rate: number;
+    seller_capture_factor: number;
+    max_input_age_hours: number;
+    min_listing_count: number;
+    min_listed_quantity: number;
+    max_cross_realm_multiplier: number;
+    min_eligible_recipes: number;
+    reference_aggregation: string;
+    conservative_percentile: number;
+}
+
+export interface DecorConversionRow {
+    decor_item: {
+        item_id: number;
+        name: string | null;
+        quality: string | null;
+        icon_url: string | null;
+    };
+    recipe: {
+        id: number;
+        name: string | null;
+        external_key: string;
+        crafting_system: string | null;
+        verification_status: string;
+        source_version: string | null;
+    };
+    realm_name: string | null;
+    connected_realm_id: number;
+    listing_median: number | null;
+    listing_min: number | null;
+    listing_count: number | null;
+    listed_quantity: number | null;
+    listing_updated_at: string | null;
+    estimated_realized_unit_price: number | null;
+    crafted_quantity: number | null;
+    gross_estimated_revenue: number | null;
+    net_estimated_revenue: number | null;
+    expected_deposit_loss: number | null;
+    other_reagent_cost: number | null;
+    material_quantity: number | null;
+    implied_value_per_material: number | null;
+    churn_rate: number | null;
+    estimated_market_units_per_day: number | null;
+    seller_capture_factor: number | null;
+    estimated_capturable_units_per_day: number | null;
+    expected_daily_contribution: number | null;
+    freshness_score: number | null;
+    liquidity_score: number | null;
+    input_quality_score: number | null;
+    model_quality: number | null;
+    eligibility_status: 'ELIGIBLE' | 'EXCLUDED';
+    exclusion_reasons: string[];
+    input_snapshot: any;
+    computed_at: string | null;
+}
+
+export type MaterialValueStatus =
+    | 'ok' | 'insufficient_data' | 'no_data' | 'no_mapping'
+    | 'unknown_material' | 'stale' | 'disabled';
+
+export interface MaterialValueResponse {
+    status: MaterialValueStatus;
+    materials?: MaterialInfo[];
+    material?: MaterialInfo;
+    realm?: { connected_realm_id: number; name: string | null };
+    scope?: 'realm';
+    region?: string;
+    reference_implied_value?: number | null;
+    best_conversion_value?: number | null;
+    conservative_implied_value?: number | null;
+    eligible_recipe_count?: number;
+    excluded_recipe_count?: number;
+    model_quality?: number | null;
+    weighted_freshness_score?: number | null;
+    weighted_liquidity_score?: number | null;
+    computed_at?: string | null;
+    is_stale?: boolean;
+    next_scheduled_refresh?: string;
+    formula_version?: string;
+    source_version?: string | null;
+    assumptions?: LumberAssumptions;
+    classifications?: Record<string, string>;
+    top_conversions?: DecorConversionRow[];
+}
+
+export interface DecorOpportunitiesResponse {
+    status: MaterialValueStatus;
+    rows: DecorConversionRow[];
+    total_returned: number;
+    include_excluded: boolean;
+    formula_version?: string;
+    computed_at?: string | null;
+}
+
+export async function fetchMaterialValue(params: {
+    material?: string;
+    realm?: number;
+    formulaVersion?: string;
+}): Promise<MaterialValueResponse> {
+    const sp = new URLSearchParams();
+    if (params.material) sp.set('material', params.material);
+    if (params.realm) sp.set('realm', String(params.realm));
+    if (params.formulaVersion) sp.set('formula_version', params.formulaVersion);
+    const res = await fetch(`/api/material-value?${sp}`, { next: { revalidate: 60 } });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body?.error || `API error: ${res.status}`);
+    return body;
+}
+
+export async function fetchDecorOpportunities(params: {
+    material: string;
+    realm: number;
+    sort?: string;
+    limit?: number;
+    offset?: number;
+    includeExcluded?: boolean;
+}): Promise<DecorOpportunitiesResponse> {
+    const sp = new URLSearchParams({ material: params.material, realm: String(params.realm) });
+    if (params.sort) sp.set('sort', params.sort);
+    if (params.limit) sp.set('limit', String(params.limit));
+    if (params.offset) sp.set('offset', String(params.offset));
+    if (params.includeExcluded) sp.set('include_excluded', '1');
+    const res = await fetch(`/api/decor-opportunities?${sp}`, { next: { revalidate: 60 } });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body?.error || `API error: ${res.status}`);
+    return body;
+}
+
 export async function fetchHealth(): Promise<HealthResponse> {
     const res = await fetch(`/api/health`, { cache: 'no-store' });
     if (!res.ok) throw new Error(`API error: ${res.status}`);

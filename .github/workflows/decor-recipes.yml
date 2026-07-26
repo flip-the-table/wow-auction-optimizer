@@ -1,0 +1,50 @@
+name: Decor Recipe Source
+
+# Manual import of a versioned curated decor-recipe mapping. Runs only on
+# dispatch — the source file changes rarely and imports are immutable.
+on:
+  workflow_dispatch:
+    inputs:
+      file:
+        description: 'Path to the source file (e.g. data/decor_recipes/v1.0.0.json)'
+        required: true
+        type: string
+      allow_unverified:
+        description: 'Permit a source with zero VERIFIED recipes (dev/shadow only)'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  load-decor-recipes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Load decor recipe source
+        run: >
+          python -m services.jobs.decor_recipe_load
+          --file "${{ inputs.file }}"
+          ${{ inputs.allow_unverified == true && '--allow-unverified' || '' }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL_SYNC: ${{ secrets.DATABASE_URL_SYNC }}
+
+      - name: Resolve item metadata (decor outputs + reagents)
+        run: python -m services.jobs.meta_resolve
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL_SYNC: ${{ secrets.DATABASE_URL_SYNC }}
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          BLIZZARD_CLIENT_ID: ${{ secrets.BLIZZARD_CLIENT_ID }}
+          BLIZZARD_CLIENT_SECRET: ${{ secrets.BLIZZARD_CLIENT_SECRET }}

@@ -534,6 +534,15 @@ export default function CraftPage() {
                 <button className="btn btn-ghost" onClick={loadData} title="Re-fetch latest data">
                     ↻ Refresh
                 </button>
+
+                <a
+                    href="/lumber"
+                    className="btn btn-secondary"
+                    style={{ marginLeft: 'auto', textDecoration: 'none' }}
+                    title="Modeled opportunity value of lumber inferred from decor conversions"
+                >
+                    🪵 Lumber Value
+                </a>
             </div>
 
             {/* Error */}

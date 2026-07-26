@@ -181,6 +181,142 @@ CREATE TABLE IF NOT EXISTS recipe_market (
     PRIMARY KEY (region, crafted_item_id)
 );
 
+-- ===== Implied lumber / constrained-material valuation =====
+
+CREATE TABLE IF NOT EXISTS constrained_materials (
+    id              SERIAL PRIMARY KEY,
+    material_key    VARCHAR(64) NOT NULL UNIQUE,
+    item_id         INTEGER REFERENCES items(id),
+    display_name    VARCHAR(256) NOT NULL,
+    material_type   VARCHAR(32) NOT NULL DEFAULT 'LUMBER',
+    is_tradeable    BOOLEAN NOT NULL DEFAULT FALSE,
+    is_account_bound BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at      TIMESTAMPTZ DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS decor_recipe_sources (
+    id                 SERIAL PRIMARY KEY,
+    source_version     VARCHAR(64) NOT NULL UNIQUE,
+    game_build         VARCHAR(64),
+    effective_date     DATE,
+    source_description TEXT,
+    source_method      VARCHAR(64),
+    source_reference   TEXT,
+    verified_by        VARCHAR(128),
+    verified_at        TIMESTAMPTZ,
+    checksum           VARCHAR(64) NOT NULL,
+    created_at         TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS decor_recipes (
+    id                  SERIAL PRIMARY KEY,
+    source_id           INTEGER NOT NULL REFERENCES decor_recipe_sources(id),
+    external_recipe_key VARCHAR(128) NOT NULL,
+    decor_item_id       INTEGER NOT NULL,
+    recipe_name         VARCHAR(256),
+    crafted_quantity    DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+    crafting_system     VARCHAR(64),
+    verification_status VARCHAR(32) NOT NULL DEFAULT 'UNVERIFIED',
+    active              BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at          TIMESTAMPTZ DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT uq_decor_recipe_source_key UNIQUE (source_id, external_recipe_key)
+);
+CREATE INDEX IF NOT EXISTS ix_decor_recipes_item ON decor_recipes(decor_item_id);
+CREATE INDEX IF NOT EXISTS ix_decor_recipes_source ON decor_recipes(source_id);
+CREATE INDEX IF NOT EXISTS ix_decor_recipes_active_item ON decor_recipes(active, decor_item_id);
+
+CREATE TABLE IF NOT EXISTS decor_recipe_reagents (
+    id                      SERIAL PRIMARY KEY,
+    decor_recipe_id         INTEGER NOT NULL REFERENCES decor_recipes(id),
+    reagent_item_id         INTEGER,
+    constrained_material_id INTEGER REFERENCES constrained_materials(id),
+    quantity                DOUBLE PRECISION NOT NULL,
+    reagent_role            VARCHAR(16) NOT NULL DEFAULT 'STANDARD',
+    pricing_scope           VARCHAR(24) NOT NULL DEFAULT 'REGION_COMMODITY',
+    optional                BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at              TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT ck_reagent_exactly_one_target
+        CHECK ((reagent_item_id IS NULL) != (constrained_material_id IS NULL)),
+    CONSTRAINT ck_reagent_positive_quantity CHECK (quantity > 0)
+);
+CREATE INDEX IF NOT EXISTS ix_decor_reagents_recipe ON decor_recipe_reagents(decor_recipe_id);
+
+CREATE TABLE IF NOT EXISTS decor_recipe_valuations (
+    region                          VARCHAR(16) NOT NULL,
+    connected_realm_id              INTEGER NOT NULL,
+    decor_recipe_id                 INTEGER NOT NULL,
+    constrained_material_id         INTEGER NOT NULL,
+    formula_version                 VARCHAR(32) NOT NULL,
+    listing_median                  BIGINT,
+    listing_min                     BIGINT,
+    listing_count                   INTEGER,
+    listed_quantity                 BIGINT,
+    listing_updated_at              TIMESTAMPTZ,
+    realized_price_factor           DOUBLE PRECISION,
+    estimated_realized_unit_price   BIGINT,
+    crafted_quantity                DOUBLE PRECISION,
+    gross_estimated_revenue         BIGINT,
+    auction_house_cut               DOUBLE PRECISION,
+    net_estimated_revenue           BIGINT,
+    expected_deposit_loss           BIGINT,
+    other_reagent_cost              BIGINT,
+    priced_reagent_count            INTEGER,
+    total_reagent_count             INTEGER,
+    constrained_material_quantity   DOUBLE PRECISION,
+    implied_value_per_material      BIGINT,
+    churn_rate                      DOUBLE PRECISION,
+    estimated_market_units_per_day  DOUBLE PRECISION,
+    seller_capture_factor           DOUBLE PRECISION,
+    estimated_capturable_units_per_day DOUBLE PRECISION,
+    expected_daily_contribution     BIGINT,
+    freshness_score                 DOUBLE PRECISION,
+    liquidity_score                 DOUBLE PRECISION,
+    input_quality_score             DOUBLE PRECISION,
+    model_confidence_score          DOUBLE PRECISION,
+    eligibility_status              VARCHAR(16) NOT NULL,
+    exclusion_reasons               JSONB,
+    input_snapshot_json             JSONB,
+    computed_at                     TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (region, connected_realm_id, decor_recipe_id,
+                 constrained_material_id, formula_version)
+);
+CREATE INDEX IF NOT EXISTS ix_valuations_realm_material_value
+    ON decor_recipe_valuations(region, connected_realm_id, constrained_material_id,
+                               implied_value_per_material DESC);
+CREATE INDEX IF NOT EXISTS ix_valuations_material_contribution
+    ON decor_recipe_valuations(region, constrained_material_id,
+                               expected_daily_contribution DESC);
+CREATE INDEX IF NOT EXISTS ix_valuations_recipe ON decor_recipe_valuations(decor_recipe_id);
+CREATE INDEX IF NOT EXISTS ix_valuations_computed ON decor_recipe_valuations(computed_at);
+
+CREATE TABLE IF NOT EXISTS material_value_summaries (
+    region                    VARCHAR(16) NOT NULL,
+    connected_realm_id        INTEGER NOT NULL,
+    constrained_material_id   INTEGER NOT NULL,
+    formula_version           VARCHAR(32) NOT NULL,
+    reference_implied_value   BIGINT,
+    best_conversion_value     BIGINT,
+    conservative_implied_value BIGINT,
+    eligible_recipe_count     INTEGER NOT NULL DEFAULT 0,
+    excluded_recipe_count     INTEGER NOT NULL DEFAULT 0,
+    weighted_freshness_score  DOUBLE PRECISION,
+    weighted_liquidity_score  DOUBLE PRECISION,
+    model_confidence_score    DOUBLE PRECISION,
+    top_recipe_id             INTEGER,
+    computed_at               TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (region, connected_realm_id, constrained_material_id, formula_version)
+);
+
+CREATE TABLE IF NOT EXISTS lumber_formula_versions (
+    formula_version VARCHAR(32) PRIMARY KEY,
+    params          JSONB NOT NULL,
+    code_release    VARCHAR(64),
+    effective_date  TIMESTAMPTZ DEFAULT NOW(),
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS item_realm_features_latest (
     region              VARCHAR(16) NOT NULL,
     connected_realm_id  INTEGER NOT NULL,

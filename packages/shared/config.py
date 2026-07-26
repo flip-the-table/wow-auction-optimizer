@@ -62,6 +62,29 @@ class Settings(BaseSettings):
     blizzard_max_concurrent: int = Field(10)
     meta_resolve_concurrent: int = Field(5)
 
+    # Ingest health: fail the run when fewer than this fraction of realms succeed
+    ingest_min_success_rate: float = Field(0.5, ge=0.0, le=1.0)
+
+    # --- Implied lumber / constrained-material valuation model ---
+    # These are MODEL ASSUMPTIONS, not observed facts. Changing any of them
+    # requires bumping lumber_model_formula_version (enforced at compute time).
+    lumber_feature_enabled: bool = Field(False)
+    lumber_model_formula_version: str = Field("lv1")
+    # Haircut applied to the observed listing median to estimate a realized
+    # unit price (listings are not confirmed sales).
+    lumber_realized_price_factor: float = Field(0.85, gt=0.0, le=1.0)
+    # Share of estimated daily market activity one seller is assumed to capture.
+    lumber_seller_capture_factor: float = Field(0.25, gt=0.0, le=1.0)
+    lumber_max_input_age_hours: int = Field(12, gt=0)
+    lumber_min_listing_count: int = Field(3, ge=1)
+    lumber_min_listed_quantity: int = Field(2, ge=1)
+    lumber_ah_cut: float = Field(0.05, ge=0.0, lt=1.0)
+    # Deposit losses are NOT modeled in lv1; the zero default is an explicit,
+    # displayed assumption rather than an omission.
+    lumber_deposit_loss_rate: float = Field(0.0, ge=0.0, lt=1.0)
+    lumber_min_eligible_recipes: int = Field(3, ge=1)
+    lumber_max_cross_realm_multiplier: float = Field(5.0, gt=1.0)
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

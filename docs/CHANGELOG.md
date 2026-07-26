@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-07-26: Implied Lumber Value & Decor Conversion Engine
+
+- New `/lumber` page + `/api/material-value` + `/api/decor-opportunities`:
+  modeled opportunity value of non-tradeable lumber inferred from decor
+  conversions (never labeled a market price; full calculation drawer with
+  OBSERVED/DERIVED/MODELED/CURATED classifications; feature-flagged via
+  `LUMBER_FEATURE_ENABLED`).
+- Versioned curated decor-recipe source (`data/decor_recipes/`), immutable
+  checksummed imports via `decor_recipe_load.py` + dispatch workflow; no
+  production mapping is seeded — the UI shows an honest empty state until a
+  verified source is imported.
+- Pure valuation engine (`lumber_valuation.py`) + precompute orchestration
+  (`lumber_compute.py`) writing `decor_recipe_valuations` /
+  `material_value_summaries`; formula-version registry with immutability
+  enforcement.
+- Prerequisite fixes: ingest now fails on all-realm/below-threshold failure;
+  compute holds a Postgres advisory lock (no overlapping runs); AH-derived
+  reagent prices older than 48h excluded from craft costs; VWAP
+  price/quantity mispairing fixed (+ tests, 44 passing); pytest CI workflow.
+
+---
+
 ## 2026-07-25: Staleness + Performance Audit
 
 ### Data Correctness

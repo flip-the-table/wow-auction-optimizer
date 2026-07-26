@@ -15,7 +15,7 @@ import logging
 import math
 import sys
 import time
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta  # noqa: F401 (timedelta used for stale gate)
 from pathlib import Path
 
 # Add project root to path for imports
@@ -101,6 +101,11 @@ def compute_confidence(
     return round(max(0.0, min(1.0, confidence)), 4)
 
 
+# Advisory lock key protecting the compute pipeline from overlapping runs
+# (scheduled + manually dispatched). Arbitrary but stable 32-bit-safe constant.
+COMPUTE_ADVISORY_LOCK_KEY = 810_640_001
+
+
 async def run_compute():
     """Main compute job entry point."""
     settings = get_settings()
@@ -113,6 +118,33 @@ async def run_compute():
     engine = get_async_engine()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    # Concurrent-run protection: purges use `updated_at < run_ts`, which is
+    # only safe when runs are serialized. Fail fast instead of interleaving.
+    lock_conn = await engine.connect()
+    acquired = (
+        await lock_conn.execute(
+            text("SELECT pg_try_advisory_lock(:k)"), {"k": COMPUTE_ADVISORY_LOCK_KEY}
+        )
+    ).scalar()
+    if not acquired:
+        await lock_conn.close()
+        raise RuntimeError(
+            "Another compute run holds the advisory lock — refusing to run "
+            "concurrently. Retry after the other run finishes."
+        )
+    try:
+        await _run_compute_locked(settings, t0)
+    finally:
+        try:
+            await lock_conn.execute(
+                text("SELECT pg_advisory_unlock(:k)"), {"k": COMPUTE_ADVISORY_LOCK_KEY}
+            )
+        finally:
+            await lock_conn.close()
+
+
+async def _run_compute_locked(settings, t0):
 
     session_factory = get_async_session_factory()
     now = datetime.now(timezone.utc)
@@ -259,11 +291,13 @@ async def run_compute():
             LEFT JOIN LATERAL (
                 SELECT COALESCE(
                     (SELECT c.median_unit_price FROM region_commodities c
-                     WHERE c.region = :region AND c.item_id = rr.reagent_item_id),
+                     WHERE c.region = :region AND c.item_id = rr.reagent_item_id
+                       AND c.updated_at > :stale_cutoff),
                     (SELECT NULLIF(i.purchase_price, 0) FROM items i
                      WHERE i.id = rr.reagent_item_id),
                     (SELECT MIN(a.median_buyout) FROM item_realm_aggregates a
-                     WHERE a.region = :region AND a.item_id = rr.reagent_item_id)
+                     WHERE a.region = :region AND a.item_id = rr.reagent_item_id
+                       AND a.updated_at > :stale_cutoff)
                 ) AS unit_cost
             ) uc ON true
             WHERE r.crafted_item_id IS NOT NULL
@@ -275,8 +309,13 @@ async def run_compute():
                 reagents_total = EXCLUDED.reagents_total,
                 updated_at = EXCLUDED.updated_at
         """)
+        # AH-derived prices older than 48h never enter craft costs (lenient
+        # gate for the craft page; the lumber model applies its own stricter
+        # per-formula staleness threshold).
+        stale_cutoff = now - timedelta(hours=48)
         cost_result = await session.execute(
-            craft_cost_stmt, {"region": settings.region, "run_ts": now}
+            craft_cost_stmt,
+            {"region": settings.region, "run_ts": now, "stale_cutoff": stale_cutoff},
         )
         logger.info("Craft costs recomputed for %d recipes", cost_result.rowcount)
 
@@ -344,6 +383,13 @@ async def run_compute():
         logger.info("Recipe market recomputed for %d crafted items", market_result.rowcount)
 
         await session.commit()
+
+    # Implied constrained-material ("lumber") valuations — precomputed here so
+    # API requests never scan item_realm_aggregates. Skips cleanly when no
+    # curated mapping is loaded; fails loudly on regression from a previously
+    # producing state (see lumber_compute.run_lumber_valuations).
+    from services.jobs.lumber_compute import run_lumber_valuations
+    await run_lumber_valuations(session_factory, settings, now)
 
     elapsed = time.monotonic() - t0
     logger.info(

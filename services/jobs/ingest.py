@@ -167,25 +167,25 @@ def compute_buyout_stats(auctions: list[dict]) -> dict[int, dict]:
 
         if item_id not in item_data:
             item_data[item_id] = {
-                "buyouts": [],
-                "quantities": [],
+                "listings": [],  # (buyout, quantity) pairs kept together
                 "listing_count": 0,
                 "total_quantity": 0,
             }
 
         entry = item_data[item_id]
-        entry["buyouts"].append(buyout)
-        entry["quantities"].append(quantity)
+        entry["listings"].append((buyout, quantity))
         entry["listing_count"] += 1
         entry["total_quantity"] += quantity
 
     result = {}
     for item_id, data in item_data.items():
-        buyouts = sorted(data["buyouts"])
-        quantities = data["quantities"]
+        listings = data["listings"]
+        buyouts = sorted(b for b, _ in listings)
 
-        # VWAP: sum(price * qty) / sum(qty)
-        total_value = sum(b * q for b, q in zip(buyouts, quantities))
+        # VWAP over correctly paired (price, quantity) tuples.
+        # (Previously prices were sorted separately from quantities, silently
+        # mispairing them — the field was unused, fixed for correctness.)
+        total_value = sum(b * q for b, q in listings)
         total_qty = data["total_quantity"]
 
         result[item_id] = {
@@ -637,6 +637,23 @@ async def run_ingest():
                         )
 
         await asyncio.gather(*[ingest_one(cr_id) for cr_id in connected_realm_ids])
+
+        # Fail the run when ingest is broadly broken — a green run over stale
+        # data would let downstream jobs publish fresh-looking derived values
+        # (features, craft costs, lumber valuations) computed from old inputs.
+        total_realms = len(connected_realm_ids)
+        if total_realms > 0:
+            success_rate = success_count / total_realms
+            if success_count == 0:
+                raise RuntimeError(
+                    f"Ingest failed for ALL {total_realms} realms — aborting run"
+                )
+            if success_rate < settings.ingest_min_success_rate:
+                raise RuntimeError(
+                    f"Ingest success rate {success_rate:.0%} "
+                    f"({success_count}/{total_realms}) below minimum "
+                    f"{settings.ingest_min_success_rate:.0%} — aborting run"
+                )
 
         # Step 3: Ingest region-wide commodities (reagent prices for craft costs)
         await ingest_commodities(client, session_factory, settings)

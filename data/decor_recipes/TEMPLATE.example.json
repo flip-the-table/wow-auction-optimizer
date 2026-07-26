@@ -1,0 +1,41 @@
+{
+  "_comment": "EXAMPLE TEMPLATE ONLY — NOT PRODUCTION DATA. Item IDs below are placeholders (0) and every recipe is UNVERIFIED. The loader refuses this file without --allow-unverified, and unverified recipes never enter public aggregates. Copy to v1.0.0.json, fill with in-game-verified data, set verification_status to VERIFIED, and record source_reference + verified_by for every recipe.",
+  "source_version": "0.0.0-example",
+  "game_build": "UNKNOWN",
+  "effective_date": "2026-07-26",
+  "source_description": "Non-production template demonstrating the curated decor recipe schema",
+  "source_method": "EXAMPLE_TEMPLATE",
+  "verified_by": null,
+  "verified_at": null,
+  "recipes": [
+    {
+      "external_recipe_key": "example-oak-bookshelf",
+      "decor_item_id": 0,
+      "decor_item_name": "EXAMPLE Oak Bookshelf (placeholder)",
+      "crafted_quantity": 1,
+      "crafting_system": "HOUSING_WORKBENCH",
+      "recipe_name": "EXAMPLE: Sturdy Oak Bookshelf",
+      "lumber_reagents": [
+        {
+          "material_key": "lumber_example_a",
+          "item_id": null,
+          "display_name": "EXAMPLE Lumber Type A",
+          "quantity": 12,
+          "is_tradeable": false,
+          "is_account_bound": true
+        }
+      ],
+      "other_reagents": [
+        {
+          "item_id": 0,
+          "quantity": 4,
+          "pricing_scope": "REGION_COMMODITY",
+          "optional": false
+        }
+      ],
+      "source_reference": "TEMPLATE — replace with e.g. 'in-game workbench UI, 2026-xx-xx, character X'",
+      "verification_status": "UNVERIFIED",
+      "notes": "Delete this recipe; it exists only to document the schema."
+    }
+  ]
+}
