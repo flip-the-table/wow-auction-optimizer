@@ -91,50 +91,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Diagnostic mode 3: per-stage timings + plan shape for the slow path
-    if (searchParams.get('debug') === '3') {
-      const out: any = {};
-      let t = Date.now();
-      const s1 = await sql`
-        SELECT COUNT(*) as c FROM recipe_costs rc
-        JOIN recipes r ON r.id = rc.recipe_id
-        JOIN items i ON i.id = rc.crafted_item_id
-        LEFT JOIN item_media m ON m.item_id = rc.crafted_item_id
-        WHERE rc.region = ${region} AND rc.craft_cost > 0
-          AND rc.reagents_priced = rc.reagents_total
-      `;
-      out.sellable = { ms: Date.now() - t, rows: Number(s1[0].c) };
-
-      t = Date.now();
-      const s2 = await sql`
-        SELECT COUNT(*) as c FROM (
-          SELECT a.item_id,
-                 ROW_NUMBER() OVER (PARTITION BY a.item_id ORDER BY a.median_buyout DESC) as rn
-          FROM item_realm_aggregates a
-          WHERE a.region = ${region} AND a.median_buyout > 0
-            AND a.item_id IN (SELECT crafted_item_id FROM recipe_costs WHERE region = ${region})
-        ) x WHERE rn = 1
-      `;
-      out.best_market = { ms: Date.now() - t, rows: Number(s2[0].c) };
-
-      t = Date.now();
-      const s3 = await sql`
-        SELECT COUNT(*) as c FROM recipe_reagents rr
-        LEFT JOIN items i ON i.id = rr.reagent_item_id
-        LEFT JOIN region_commodities c ON c.region = ${region} AND c.item_id = rr.reagent_item_id
-      `;
-      out.reagent_join_all = { ms: Date.now() - t, rows: Number(s3[0].c) };
-
-      t = Date.now();
-      const s4 = await sql`
-        SELECT DISTINCT profession_id, profession_name FROM recipes
-        WHERE profession_name IS NOT NULL ORDER BY profession_name
-      `;
-      out.professions = { ms: Date.now() - t, rows: s4.length };
-
-      return NextResponse.json(out, { headers: { 'Cache-Control': 'no-store' } });
-    }
-
     const decorFilter = decorOnly ? sql`AND i.item_subclass = 'Decor'` : sql``;
     const professionFilter = profession !== null ? sql`AND r.profession_id = ${profession}` : sql``;
     const searchFilter = searchPattern
@@ -172,36 +128,23 @@ export async function GET(request: NextRequest) {
           ${professionFilter}
           ${searchFilter}
       ),
-      best_market AS (
-        -- Single pass over the region's aggregates with a window argmax.
-        -- Per-recipe index probes (LATERAL/DISTINCT ON) degrade badly when the
-        -- table is bloated after mass deletes; one sequential scan is stable.
-        SELECT item_id, connected_realm_id, median_buyout, total_quantity, listing_count
-        FROM (
-          SELECT
-            a.item_id, a.connected_realm_id, a.median_buyout, a.total_quantity, a.listing_count,
-            ROW_NUMBER() OVER (PARTITION BY a.item_id ORDER BY a.median_buyout DESC) as rn
-          FROM item_realm_aggregates a
-          WHERE a.region = ${region}
-            AND a.median_buyout > 0
-            AND a.item_id IN (SELECT crafted_item_id FROM sellable)
-        ) ranked
-        WHERE rn = 1
-      ),
       best AS (
+        -- recipe_market is precomputed by the compute job — touching the large
+        -- aggregates table at request time caused 504s on the small instance.
         SELECT
           s.*,
-          a.connected_realm_id,
-          a.median_buyout as sell_price,
-          a.total_quantity as market_quantity,
-          a.listing_count as market_listings,
+          bm.connected_realm_id,
+          bm.sell_price,
+          bm.market_quantity,
+          bm.market_listings,
           ri.name as realm_name
         FROM sellable s
-        JOIN best_market a ON a.item_id = s.crafted_item_id
+        JOIN recipe_market bm
+          ON bm.region = ${region} AND bm.crafted_item_id = s.crafted_item_id
         LEFT JOIN (
           SELECT connected_realm_id, MIN(name) as name
           FROM realms GROUP BY connected_realm_id
-        ) ri ON a.connected_realm_id = ri.connected_realm_id
+        ) ri ON bm.connected_realm_id = ri.connected_realm_id
       )
       SELECT
         *,

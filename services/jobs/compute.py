@@ -280,6 +280,49 @@ async def run_compute():
         )
         logger.info("Craft costs recomputed for %d recipes", cost_result.rowcount)
 
+        # Precompute the best realm to sell each craftable item. The web API
+        # serves this directly — running the aggregates window scan at request
+        # time caused 504s on the small RDS instance.
+        market_stmt = text("""
+            INSERT INTO recipe_market (
+                region, crafted_item_id, connected_realm_id,
+                sell_price, market_quantity, market_listings, updated_at
+            )
+            SELECT :region, item_id, connected_realm_id,
+                   median_buyout, total_quantity, listing_count, :run_ts
+            FROM (
+                SELECT
+                    a.item_id, a.connected_realm_id, a.median_buyout,
+                    a.total_quantity, a.listing_count,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY a.item_id ORDER BY a.median_buyout DESC
+                    ) as rn
+                FROM item_realm_aggregates a
+                WHERE a.region = :region
+                  AND a.median_buyout > 0
+                  AND a.item_id IN (
+                      SELECT DISTINCT crafted_item_id FROM recipes
+                      WHERE crafted_item_id IS NOT NULL
+                  )
+            ) ranked
+            WHERE rn = 1
+            ON CONFLICT (region, crafted_item_id) DO UPDATE SET
+                connected_realm_id = EXCLUDED.connected_realm_id,
+                sell_price = EXCLUDED.sell_price,
+                market_quantity = EXCLUDED.market_quantity,
+                market_listings = EXCLUDED.market_listings,
+                updated_at = EXCLUDED.updated_at
+        """)
+        market_result = await session.execute(
+            market_stmt, {"region": settings.region, "run_ts": now}
+        )
+        # Purge market rows for items no longer listed anywhere
+        await session.execute(
+            text("DELETE FROM recipe_market WHERE region = :region AND updated_at < :run_ts"),
+            {"region": settings.region, "run_ts": now},
+        )
+        logger.info("Recipe market recomputed for %d crafted items", market_result.rowcount)
+
         await session.commit()
 
     elapsed = time.monotonic() - t0

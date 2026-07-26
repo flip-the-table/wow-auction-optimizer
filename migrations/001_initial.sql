@@ -169,6 +169,17 @@ CREATE TABLE IF NOT EXISTS recipe_costs (
 );
 CREATE INDEX IF NOT EXISTS ix_recipe_costs_item ON recipe_costs(crafted_item_id);
 
+CREATE TABLE IF NOT EXISTS recipe_market (
+    region             VARCHAR(16) NOT NULL,
+    crafted_item_id    INTEGER NOT NULL,
+    connected_realm_id INTEGER NOT NULL,
+    sell_price         BIGINT NOT NULL,
+    market_quantity    BIGINT DEFAULT 0,
+    market_listings    INTEGER DEFAULT 0,
+    updated_at         TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (region, crafted_item_id)
+);
+
 CREATE TABLE IF NOT EXISTS item_realm_features_latest (
     region              VARCHAR(16) NOT NULL,
     connected_realm_id  INTEGER NOT NULL,

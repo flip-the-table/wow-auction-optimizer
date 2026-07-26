@@ -274,6 +274,26 @@ class RecipeCost(Base):
     )
 
 
+class RecipeMarket(Base):
+    """Precomputed best realm to sell each craftable item (highest median).
+
+    Computed by compute.py right after recipe_costs. Serving this from a tiny
+    table keeps /api/craft off the large aggregates table at request time.
+    """
+    __tablename__ = "recipe_market"
+
+    region = Column(String(16), primary_key=True)
+    crafted_item_id = Column(Integer, primary_key=True)
+
+    connected_realm_id = Column(Integer, nullable=False)
+    sell_price = Column(BigInteger, nullable=False)
+    market_quantity = Column(BigInteger, default=0)
+    market_listings = Column(Integer, default=0)
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class ItemRealmFeaturesLatest(Base):
     __tablename__ = "item_realm_features_latest"
 
