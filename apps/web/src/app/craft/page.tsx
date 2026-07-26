@@ -49,6 +49,19 @@ function CraftVerdict({ r, useUserRealm }: { r: CraftRecipe; useUserRealm: boole
     const margin = useUserRealm && r.user_margin != null ? r.user_margin : r.margin;
     const pct = r.craft_cost > 0 ? margin / r.craft_cost : null;
     if (pct === null) return <span className="stat-badge neutral">—</span>;
+    // A huge margin on a market where nothing actually sells is a lottery
+    // ticket, not an opportunity — call it what it is.
+    if ((r.est_sales_per_day ?? 0) < 0.1 && pct > 0) {
+        return (
+            <span
+                className="stat-badge neutral"
+                title="Listings on this market almost never sell (near-zero churn) — the posted price is aspirational."
+                style={{ whiteSpace: 'nowrap' }}
+            >
+                🎰 Rarely sells
+            </span>
+        );
+    }
     const where = useUserRealm && r.user_margin != null ? 'on your realm' : 'on the best realm';
     const pctText = `${pct >= 0 ? '+' : ''}${(pct * 100).toFixed(0)}%`;
     let label: string, cls: string, title: string;
@@ -186,6 +199,14 @@ function RecipeTable({
                                     )}
                                     <td style={{ fontWeight: 700 }}>
                                         <GoldAmount copper={r.margin} />
+                                        {(r.expected_daily_gold ?? 0) > 0 && (
+                                            <div
+                                                style={{ fontSize: '0.7rem', fontWeight: 400, color: 'var(--text-muted)', marginTop: 2 }}
+                                                title={`~${(r.est_sales_per_day ?? 0).toFixed(1)} sales/day estimated from stock churn on the best realm`}
+                                            >
+                                                ~{Math.round((r.expected_daily_gold ?? 0) / 10000).toLocaleString()}g/day est
+                                            </div>
+                                        )}
                                     </td>
                                     <td>
                                         <CraftVerdict r={r} useUserRealm={showUserRealm} />

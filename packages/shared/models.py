@@ -289,6 +289,9 @@ class RecipeMarket(Base):
     sell_price = Column(BigInteger, nullable=False)
     market_quantity = Column(BigInteger, default=0)
     market_listings = Column(Integer, default=0)
+    # Estimated units sold per day on the best realm (churn x stock, capped at
+    # one full stock turnover). Zero-churn lottery listings rank last.
+    demand_per_day = Column(Float, default=0.0)
     updated_at = Column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

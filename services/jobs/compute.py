@@ -299,14 +299,18 @@ async def run_compute():
             )
             INSERT INTO recipe_market (
                 region, crafted_item_id, connected_realm_id,
-                sell_price, market_quantity, market_listings, updated_at
+                sell_price, market_quantity, market_listings, demand_per_day, updated_at
             )
             SELECT :region, item_id, connected_realm_id,
-                   median_buyout, total_quantity, listing_count, :run_ts
+                   median_buyout, total_quantity, listing_count,
+                   -- est. units sold/day: hourly churn x stock, capped at one
+                   -- full stock turnover per day
+                   LEAST(COALESCE(demand_proxy_smoothed, 0) * 24, 1.0) * total_quantity,
+                   :run_ts
             FROM (
                 SELECT
                     a.item_id, a.connected_realm_id, a.median_buyout,
-                    a.total_quantity, a.listing_count,
+                    a.total_quantity, a.listing_count, a.demand_proxy_smoothed,
                     ROW_NUMBER() OVER (
                         PARTITION BY a.item_id ORDER BY a.median_buyout DESC
                     ) as rn
@@ -326,6 +330,7 @@ async def run_compute():
                 sell_price = EXCLUDED.sell_price,
                 market_quantity = EXCLUDED.market_quantity,
                 market_listings = EXCLUDED.market_listings,
+                demand_per_day = EXCLUDED.demand_per_day,
                 updated_at = EXCLUDED.updated_at
         """)
         market_result = await session.execute(

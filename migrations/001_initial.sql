@@ -176,6 +176,7 @@ CREATE TABLE IF NOT EXISTS recipe_market (
     sell_price         BIGINT NOT NULL,
     market_quantity    BIGINT DEFAULT 0,
     market_listings    INTEGER DEFAULT 0,
+    demand_per_day     DOUBLE PRECISION DEFAULT 0,
     updated_at         TIMESTAMPTZ DEFAULT NOW(),
     PRIMARY KEY (region, crafted_item_id)
 );

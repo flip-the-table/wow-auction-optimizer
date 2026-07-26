@@ -38,6 +38,8 @@ REQUIRED_INDEXES = [
     "CREATE INDEX IF NOT EXISTS ix_aggregates_region_item ON item_realm_aggregates(region, item_id)",
     # Supports the daily-history pruning below.
     "CREATE INDEX IF NOT EXISTS ix_daily_date ON item_realm_daily(date)",
+    # Schema evolution (create_all only creates missing tables, not columns)
+    "ALTER TABLE IF EXISTS recipe_market ADD COLUMN IF NOT EXISTS demand_per_day DOUBLE PRECISION DEFAULT 0",
 ]
 
 

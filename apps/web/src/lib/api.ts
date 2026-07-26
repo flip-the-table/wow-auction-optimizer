@@ -191,6 +191,8 @@ export interface CraftRecipe {
     user_sell_price?: number | null;
     user_market_quantity?: number | null;
     user_margin?: number | null;
+    est_sales_per_day?: number;
+    expected_daily_gold?: number;
 }
 
 export interface CraftResponse {

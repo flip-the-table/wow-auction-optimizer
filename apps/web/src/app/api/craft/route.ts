@@ -104,7 +104,7 @@ export async function GET(request: NextRequest) {
     // item (highest median). Margin = revenue per craft after AH cut - cost.
     const rows = await sql`
       WITH sellable AS (
-        SELECT
+        SELECT DISTINCT ON (rc.crafted_item_id)
           rc.recipe_id,
           rc.crafted_item_id,
           rc.craft_cost,
@@ -130,6 +130,7 @@ export async function GET(request: NextRequest) {
           ${decorFilter}
           ${professionFilter}
           ${searchFilter}
+        ORDER BY rc.crafted_item_id, rc.craft_cost ASC
       ),
       best AS (
         -- recipe_market is precomputed by the compute job — touching the large
@@ -141,6 +142,7 @@ export async function GET(request: NextRequest) {
           bm.sell_price,
           bm.market_quantity,
           bm.market_listings,
+          COALESCE(bm.demand_per_day, 0) as demand_per_day,
           ri.name as realm_name,
           ua.median_buyout as user_sell_price,
           ua.total_quantity as user_market_quantity
@@ -160,9 +162,13 @@ export async function GET(request: NextRequest) {
       SELECT
         *,
         (sell_price * crafted_quantity * ${1 - AH_CUT} - craft_cost)::bigint as margin,
-        (user_sell_price * crafted_quantity * ${1 - AH_CUT} - craft_cost)::bigint as user_margin
+        (user_sell_price * crafted_quantity * ${1 - AH_CUT} - craft_cost)::bigint as user_margin,
+        -- Expected gold/day: per-unit profit x est. units sold/day. Lottery
+        -- listings (huge margin, zero churn) rank last where they belong.
+        ((sell_price * ${1 - AH_CUT} - craft_cost / GREATEST(crafted_quantity, 0.01)) * demand_per_day)::bigint
+          as expected_daily_gold
       FROM best
-      ORDER BY ${userRealm !== null ? sql`user_margin DESC NULLS LAST,` : sql``} margin DESC
+      ORDER BY expected_daily_gold DESC NULLS LAST, margin DESC
       LIMIT ${limit}
     `;
 
@@ -227,6 +233,8 @@ export async function GET(request: NextRequest) {
       user_sell_price: row.user_sell_price != null ? Number(row.user_sell_price) : null,
       user_market_quantity: row.user_market_quantity != null ? Number(row.user_market_quantity) : null,
       user_margin: row.user_margin != null ? Number(row.user_margin) : null,
+      est_sales_per_day: Number(row.demand_per_day ?? 0),
+      expected_daily_gold: Number(row.expected_daily_gold ?? 0),
     }));
 
     // Profession list for the filter dropdown (cheap, cached with response)
