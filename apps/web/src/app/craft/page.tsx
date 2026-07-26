@@ -184,7 +184,9 @@ export default function CraftPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    const [decorOnly, setDecorOnly] = useState(true);
+    // Off by default: the professions API currently exposes no Decor-crafting
+    // recipes — the toggle is future-proofing for when Blizzard adds them.
+    const [decorOnly, setDecorOnly] = useState(false);
     const [profession, setProfession] = useState<number | undefined>();
     const [limit, setLimit] = useState(50);
     const [searchQuery, setSearchQuery] = useState('');
@@ -217,7 +219,7 @@ export default function CraftPage() {
             setError(null);
             const result = await fetchCraftable({
                 limit,
-                all: !decorOnly,
+                decorOnly,
                 profession,
                 search: debouncedSearch || undefined,
             });
@@ -527,8 +529,9 @@ export default function CraftPage() {
                             expanded={expanded}
                             onToggleExpand={toggleExpand}
                             emptyMessage={
-                                'No craftable recipes with complete pricing found.' +
-                                (decorOnly ? ' Try unchecking "Decor only", or the recipe catalog may not be ingested yet.' : '')
+                                decorOnly
+                                    ? 'No decor-crafting recipes exist in the professions catalog yet — uncheck "Decor only" to see all craftable margins.'
+                                    : 'No craftable recipes with complete pricing found. The recipe catalog may not be ingested yet.'
                             }
                         />
                     )}

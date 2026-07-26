@@ -19,7 +19,10 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
 
     const limit = Math.min(Math.max(intParam(searchParams.get('limit'), 50), 1), 500);
-    const decorOnly = searchParams.get('all') !== '1';
+    // Default: all recipes. The professions API exposes zero Decor-crafting
+    // recipes today (verified via debug=2 breakdown) — the filter stays as an
+    // opt-in for when/if Blizzard adds housing recipes to the catalog.
+    const decorOnly = searchParams.get('decor') === '1';
     const professionRaw = intParam(searchParams.get('profession'), NaN);
     const profession = Number.isFinite(professionRaw) ? professionRaw : null;
     const search = searchParams.get('search') || null;

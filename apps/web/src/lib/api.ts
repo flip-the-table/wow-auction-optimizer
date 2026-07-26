@@ -201,13 +201,13 @@ export interface CraftResponse {
 
 export async function fetchCraftable(params: {
     limit?: number;
-    all?: boolean;
+    decorOnly?: boolean;
     profession?: number;
     search?: string;
 }): Promise<CraftResponse> {
     const searchParams = new URLSearchParams();
     if (params.limit) searchParams.set('limit', String(params.limit));
-    if (params.all) searchParams.set('all', '1');
+    if (params.decorOnly) searchParams.set('decor', '1');
     if (params.profession) searchParams.set('profession', String(params.profession));
     if (params.search) searchParams.set('search', params.search);
 
