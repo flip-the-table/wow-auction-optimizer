@@ -80,6 +80,49 @@ CREATE INDEX IF NOT EXISTS ix_metrics_snapshot ON item_realm_snapshot_metrics(sn
 CREATE INDEX IF NOT EXISTS ix_metrics_realm_item_snapshot
     ON item_realm_snapshot_metrics(connected_realm_id, item_id, snapshot_id DESC);
 
+CREATE TABLE IF NOT EXISTS item_realm_aggregates (
+    region              VARCHAR(16) NOT NULL,
+    connected_realm_id  INTEGER NOT NULL,
+    item_id             INTEGER NOT NULL,
+    listing_count       INTEGER DEFAULT 0,
+    total_quantity      INTEGER DEFAULT 0,
+    min_buyout          BIGINT,
+    median_buyout       BIGINT,
+    mean_buyout         BIGINT,
+    vwap_buyout         BIGINT,
+    ewma_price          DOUBLE PRECISION,
+    ewma_demand         DOUBLE PRECISION,
+    demand_proxy_raw    DOUBLE PRECISION DEFAULT 0.0,
+    demand_proxy_smoothed DOUBLE PRECISION DEFAULT 0.0,
+    price_mean          DOUBLE PRECISION DEFAULT 0.0,
+    price_m2            DOUBLE PRECISION DEFAULT 0.0,
+    demand_mean         DOUBLE PRECISION DEFAULT 0.0,
+    demand_m2           DOUBLE PRECISION DEFAULT 0.0,
+    snapshot_count      INTEGER DEFAULT 0,
+    updated_at          TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (region, connected_realm_id, item_id)
+);
+CREATE INDEX IF NOT EXISTS ix_aggregates_region_realm
+    ON item_realm_aggregates(region, connected_realm_id);
+CREATE INDEX IF NOT EXISTS ix_aggregates_region_item
+    ON item_realm_aggregates(region, item_id);
+
+CREATE TABLE IF NOT EXISTS item_realm_daily (
+    region              VARCHAR(16) NOT NULL,
+    connected_realm_id  INTEGER NOT NULL,
+    item_id             INTEGER NOT NULL,
+    date                DATE NOT NULL,
+    median_price        BIGINT,
+    demand_proxy        DOUBLE PRECISION DEFAULT 0.0,
+    listing_count       INTEGER DEFAULT 0,
+    total_quantity      INTEGER DEFAULT 0,
+    PRIMARY KEY (region, connected_realm_id, item_id, date)
+);
+CREATE INDEX IF NOT EXISTS ix_daily_item_region
+    ON item_realm_daily(region, item_id);
+CREATE INDEX IF NOT EXISTS ix_daily_date
+    ON item_realm_daily(date);
+
 CREATE TABLE IF NOT EXISTS item_realm_features_latest (
     region              VARCHAR(16) NOT NULL,
     connected_realm_id  INTEGER NOT NULL,

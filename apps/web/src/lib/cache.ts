@@ -46,6 +46,20 @@ export async function cacheSet(key: string, value: unknown, ttlSeconds: number =
 }
 
 /**
+ * Ping Redis to verify connectivity. Returns false when unconfigured or unreachable.
+ */
+export async function cachePing(): Promise<boolean> {
+    try {
+        const r = getRedis();
+        if (!r) return false;
+        const res = await r.ping();
+        return res === 'PONG';
+    } catch {
+        return false;
+    }
+}
+
+/**
  * Delete a cached key. Errors are swallowed.
  */
 export async function cacheDel(key: string): Promise<void> {

@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { cachePing } from '@/lib/cache';
 
 export const runtime = 'nodejs'; // Node.js runtime required for postgres driver
+// Without this, Next.js prerenders this handler at BUILD time and serves the
+// same frozen JSON forever (no `request` usage = static route).
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   const sql = getDb();
@@ -31,23 +35,28 @@ export async function GET() {
     const realmResult = await sql`
       SELECT COUNT(DISTINCT connected_realm_id) as cnt FROM realms
     `;
-    realmCount = realmResult[0]?.cnt ?? null;
+    realmCount = realmResult[0]?.cnt != null ? Number(realmResult[0].cnt) : null;
 
     const itemResult = await sql`
       SELECT COUNT(DISTINCT item_id) as cnt FROM item_realm_features_latest
     `;
-    itemCount = itemResult[0]?.cnt ?? null;
+    itemCount = itemResult[0]?.cnt != null ? Number(itemResult[0].cnt) : null;
   } catch (e) {
     console.error('Health check DB error:', e);
   }
 
-  return NextResponse.json({
-    status: dbOk ? 'ok' : 'degraded',
-    db_connected: dbOk,
-    redis_connected: false,
-    last_ingest_at: lastIngest,
-    last_compute_at: lastCompute,
-    realm_count: realmCount,
-    item_count: itemCount,
-  });
+  const redisOk = await cachePing();
+
+  return NextResponse.json(
+    {
+      status: dbOk ? 'ok' : 'degraded',
+      db_connected: dbOk,
+      redis_connected: redisOk,
+      last_ingest_at: lastIngest,
+      last_compute_at: lastCompute,
+      realm_count: realmCount,
+      item_count: itemCount,
+    },
+    { headers: { 'Cache-Control': 'no-store' } }
+  );
 }

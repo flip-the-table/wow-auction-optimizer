@@ -21,7 +21,7 @@ from pathlib import Path
 # Add project root to path for imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from packages.shared.config import get_settings
@@ -64,6 +64,8 @@ def compute_confidence(
     min_total_quantity: int,
     price_std: float,
     demand_std: float,
+    price_mean: float = 0.0,
+    demand_mean: float = 0.0,
 ) -> float:
     """
     Compute confidence score [0, 1] based on data quality.
@@ -76,9 +78,11 @@ def compute_confidence(
     # Snapshot count factor
     count_factor = min(1.0, snapshot_count / max(min_snapshots, 1))
 
-    # Volatility factor (lower is better)
-    price_cv = price_std / max(1.0, abs(price_std) + 1e-9)
-    demand_cv = demand_std / max(1.0, abs(demand_std) + 1e-9)
+    # Volatility factor: coefficient of variation (std relative to mean), clamped
+    # to [0, 1]. (Previously std/std, which was ~1 for any std > 1, zeroing this
+    # factor for essentially every item.)
+    price_cv = min(1.0, price_std / max(abs(price_mean), 1e-9)) if price_std > 0 else 0.0
+    demand_cv = min(1.0, demand_std / max(abs(demand_mean), 1e-9)) if demand_std > 0 else 0.0
     avg_cv = (price_cv + demand_cv) / 2
     volatility = max(0.0, 1.0 - avg_cv)
 
@@ -114,10 +118,13 @@ async def run_compute():
     now = datetime.now(timezone.utc)
 
     async with session_factory() as session:
-        # Load all aggregates for the region
+        # Load aggregates for the region, filtering illiquid rows in SQL.
+        # (Filtering in Python previously loaded ~1.5M ORM rows to keep ~1k.)
         stmt = (
             select(ItemRealmAggregate)
             .where(ItemRealmAggregate.region == settings.region)
+            .where(ItemRealmAggregate.listing_count >= settings.min_listing_count)
+            .where(ItemRealmAggregate.total_quantity >= settings.min_total_quantity)
         )
         result = await session.execute(stmt)
         aggregates = result.scalars().all()
@@ -177,16 +184,12 @@ async def run_compute():
                 min_total_quantity=settings.min_total_quantity,
                 price_std=price_std,
                 demand_std=demand_std,
+                price_mean=agg.price_mean or 0.0,
+                demand_mean=agg.demand_mean or 0.0,
             )
 
             # Sell suitability: items with high price AND high demand AND high confidence
             sell_suitability = max(0, price_z) * max(0, demand_z) * confidence
-
-            # Liquidity filter
-            if (agg.listing_count or 0) < settings.min_listing_count:
-                continue
-            if (agg.total_quantity or 0) < settings.min_total_quantity:
-                continue
 
             features_batch.append({
                 "region": settings.region,
@@ -220,25 +223,42 @@ async def run_compute():
         if features_batch:
             await _upsert_features(session, features_batch)
 
+        # Purge stale rows not refreshed this run. Without this, features_latest
+        # accumulates zombie "hot" items forever (rows were observed lingering
+        # for 5+ months), polluting the radar with long-dead spikes.
+        purge_stmt = text(
+            "DELETE FROM item_realm_features_latest "
+            "WHERE region = :region AND updated_at < :run_ts"
+        )
+        purge_result = await session.execute(
+            purge_stmt, {"region": settings.region, "run_ts": now}
+        )
+
         await session.commit()
 
     elapsed = time.monotonic() - t0
     logger.info(
-        "Compute complete: %d item-realm features upserted in %.1fs",
+        "Compute complete: %d item-realm features upserted, %d stale rows purged in %.1fs",
         total_items,
+        purge_result.rowcount,
         elapsed,
     )
 
 
 async def _upsert_features(session, batch: list[dict]):
-    """Upsert a batch of features into item_realm_features_latest."""
-    for row in batch:
-        stmt = pg_insert(ItemRealmFeaturesLatest.__table__).values(**row)
-        stmt = stmt.on_conflict_do_update(
-            index_elements=["region", "connected_realm_id", "item_id"],
-            set_={k: v for k, v in row.items() if k not in ("region", "connected_realm_id", "item_id")},
-        )
-        await session.execute(stmt)
+    """Upsert a batch of features into item_realm_features_latest (single multi-row INSERT)."""
+    if not batch:
+        return
+    stmt = pg_insert(ItemRealmFeaturesLatest.__table__).values(batch)
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["region", "connected_realm_id", "item_id"],
+        set_={
+            k: stmt.excluded[k]
+            for k in batch[0]
+            if k not in ("region", "connected_realm_id", "item_id")
+        },
+    )
+    await session.execute(stmt)
 
 
 if __name__ == "__main__":

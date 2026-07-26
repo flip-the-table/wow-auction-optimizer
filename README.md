@@ -18,7 +18,7 @@ Cloud-native web app that identifies high-demand, high-price World of Warcraft a
 │       └── Upstash Redis (cache)    │
 └────────────────────────────────────┘
          ▲
-         │  GitHub Actions (hourly)
+         │  GitHub Actions (daily, 08:00 UTC)
          ├── ingest.py
          ├── compute.py
          ├── cleanup.py
@@ -105,14 +105,14 @@ npm run dev
    - `BLIZZARD_CLIENT_SECRET`
    - `REDIS_URL` (optional, from Upstash)
 
-5. **Trigger First Run**: Manually trigger the GitHub Actions workflow, or wait for the hourly cron.
+5. **Trigger First Run**: Manually trigger the GitHub Actions workflow, or wait for the daily cron.
 
 ### GitHub Actions Workflow
 
-Already configured in `.github/workflows/jobs.yml`. Runs hourly:
-1. Cleanup old data (snapshots > 30 days)
+Already configured in `.github/workflows/jobs.yml`. Runs daily at 08:00 UTC:
+1. Cleanup old data (ensure indexes, prune snapshots + daily history > 90 days, VACUUM)
 2. Ingest auction data from Blizzard API
-3. Compute hotness/features
+3. Compute hotness/features (and purge stale feature rows)
 4. Resolve item metadata
 
 ---

@@ -27,14 +27,30 @@ logger = logging.getLogger("cleanup")
 # Keep this many snapshots per realm (metadata only, for tracking)
 MAX_SNAPSHOTS_TO_KEEP = 10
 
+# Keep this many days of item_realm_daily history (UI charts at most 90 days)
+MAX_DAILY_HISTORY_DAYS = 90
+
+# Indexes required by the web API's hot paths. Created here idempotently since
+# Base.metadata.create_all only creates indexes for brand-new tables.
+REQUIRED_INDEXES = [
+    # /api/hot + /api/item count/look up aggregates by (region, item_id);
+    # without this every lookup scans the whole ~1.5M-row region partition.
+    "CREATE INDEX IF NOT EXISTS ix_aggregates_region_item ON item_realm_aggregates(region, item_id)",
+    # Supports the daily-history pruning below.
+    "CREATE INDEX IF NOT EXISTS ix_daily_date ON item_realm_daily(date)",
+]
+
 
 async def run_cleanup():
-    """Drop old tables, prune snapshots, and VACUUM."""
+    """Ensure indexes, drop old tables, prune snapshots + daily history, and VACUUM."""
     settings = get_settings()
     engine = get_async_engine()
     t0 = time.monotonic()
 
     async with engine.begin() as conn:
+        # Ensure hot-path indexes exist (no-op when already present)
+        for ddl in REQUIRED_INDEXES:
+            await conn.execute(text(ddl))
         # Drop old metrics table if it exists (massive space saver)
         result = await conn.execute(text(
             "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'item_realm_snapshot_metrics')"
@@ -74,6 +90,14 @@ async def run_cleanup():
             "Snapshot cleanup: %d -> %d (%d deleted)",
             before_snapshots, after_snapshots, deleted_snapshots,
         )
+
+        # Prune old daily history rows (table otherwise grows without bound)
+        result = await conn.execute(
+            text("DELETE FROM item_realm_daily WHERE date < CURRENT_DATE - :days::int"),
+            {"days": MAX_DAILY_HISTORY_DAYS},
+        )
+        logger.info("Daily history cleanup: %d rows older than %d days deleted",
+                    result.rowcount, MAX_DAILY_HISTORY_DAYS)
 
     # VACUUM to reclaim disk space (needs autocommit)
     from sqlalchemy import create_engine

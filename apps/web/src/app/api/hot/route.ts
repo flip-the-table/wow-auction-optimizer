@@ -4,7 +4,14 @@ import { cacheGet, cacheSet } from '@/lib/cache';
 
 export const runtime = 'nodejs';
 
-const CACHE_TTL = 300; // 5 minutes
+// Data refreshes once daily (08:00 UTC cron), so a long cache is safe.
+const CACHE_TTL = 1800; // 30 minutes
+
+/** Parse an int query param, returning fallback on missing/garbage input. */
+function intParam(value: string | null, fallback: number): number {
+  const n = parseInt(value ?? '', 10);
+  return Number.isFinite(n) ? n : fallback;
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,71 +19,97 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
 
     const mode = searchParams.get('mode') || 'both';
-    const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '50'), 1), 500);
-    const minConfidence = parseFloat(searchParams.get('minConfidence') || '0');
-    const realm = searchParams.get('realm') ? parseInt(searchParams.get('realm')!) : null;
+    const limit = Math.min(Math.max(intParam(searchParams.get('limit'), 50), 1), 500);
+    const minConfidenceRaw = parseFloat(searchParams.get('minConfidence') || '0');
+    const minConfidence = Number.isFinite(minConfidenceRaw) ? minConfidenceRaw : 0;
+    const realmRaw = intParam(searchParams.get('realm'), NaN);
+    const realm = Number.isFinite(realmRaw) ? realmRaw : null;
     const search = searchParams.get('search') || null;
 
+    // Sanitized search pattern (parameterized below — sanitization is belt-and-braces)
+    let searchPattern: string | null = null;
+    if (search) {
+      const sanitized = search.replace(/[^a-zA-Z0-9 '\-]/g, '').trim();
+      if (sanitized.length > 0) searchPattern = `%${sanitized}%`;
+    }
+
     // --- Cache check ---
-    const cacheKey = `hot:${region}:${mode}:${limit}:${realm ?? 'all'}:${minConfidence}:${search ?? ''}`;
+    const cacheKey = `hot:${region}:${mode}:${limit}:${realm ?? 'all'}:${minConfidence}:${searchPattern ?? ''}`;
     const cached = await cacheGet<any>(cacheKey);
     if (cached) {
       return NextResponse.json(cached, {
         headers: {
-          'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+          'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=1800',
           'X-Cache': 'HIT',
         },
       });
     }
 
     const sql = getDb();
-    const sortCol = 'f.hotness_score';
 
-    // Build WHERE conditions
-    // Note: region is from env var (safe), minConfidence/realm are parsed numbers (safe)
-    // search is user input — sanitize strictly beyond just quote escaping
-    let whereConditions = [`f.region = '${region}'`];
-    whereConditions.push(`i.item_subclass = 'Decor'`);
-    if (minConfidence > 0) whereConditions.push(`f.confidence >= ${minConfidence}`);
-    if (realm !== null) whereConditions.push(`f.connected_realm_id = ${realm}`);
-    if (search) {
-      // Strip everything except alphanumeric, spaces, hyphens, apostrophes
-      const sanitized = search.replace(/[^a-zA-Z0-9 '\-]/g, '').replace(/'/g, "''");
-      if (sanitized.length > 0) {
-        whereConditions.push(`i.name ILIKE '%${sanitized}%'`);
-      }
-    }
-    const whereClause = whereConditions.join(' AND ');
+    // --- Main query ---
+    // Strategy: pick the best realm per item and apply LIMIT *first*, then compute
+    // realm counts only for the rows actually returned (correlated subqueries over
+    // an indexed lookup). Previous version pre-aggregated counts over the entire
+    // 1.5M-row aggregates table on every request, causing 20-30s responses / 504s.
+    const confFilter = minConfidence > 0 ? sql`AND f.confidence >= ${minConfidence}` : sql``;
+    const searchFilter = searchPattern ? sql`AND i.name ILIKE ${searchPattern}` : sql``;
 
-    // --- SINGLE BATCH QUERY: main data + realm names + counts ---
-    // No more N+1! Realm names, total counts, and hot counts are inlined.
-    let query: string;
-
-    if (realm === null) {
-      query = `
-      WITH best_per_item AS (
-        SELECT
+    const rows =
+      realm === null
+        ? await sql`
+      WITH picked AS (
+        SELECT DISTINCT ON (f.item_id)
           f.item_id,
-          MAX(${sortCol}) as best_score
+          f.connected_realm_id,
+          f.current_price,
+          f.current_demand,
+          f.price_pct_diff,
+          f.demand_pct_diff,
+          f.price_z,
+          f.demand_z,
+          f.hotness_score,
+          f.confidence,
+          f.listing_count,
+          f.total_quantity,
+          f.baseline_window_days,
+          f.updated_at,
+          f.sell_suitability_score,
+          i.name as item_name,
+          i.quality as item_quality,
+          i.level as item_level,
+          i.item_class,
+          i.item_subclass,
+          m.icon_url
         FROM item_realm_features_latest f
-        WHERE f.region = '${region}'
-        GROUP BY f.item_id
+        JOIN items i ON f.item_id = i.id AND i.item_subclass = 'Decor'
+        LEFT JOIN item_media m ON f.item_id = m.item_id
+        WHERE f.region = ${region}
+          ${confFilter}
+          ${searchFilter}
+        ORDER BY f.item_id, f.hotness_score DESC
       ),
-      realm_info AS (
+      top_items AS (
+        SELECT * FROM picked ORDER BY hotness_score DESC LIMIT ${limit}
+      )
+      SELECT
+        t.*,
+        ri.name as realm_name,
+        (SELECT COUNT(DISTINCT a.connected_realm_id)
+         FROM item_realm_aggregates a
+         WHERE a.region = ${region} AND a.item_id = t.item_id) as total_realm_count,
+        (SELECT COUNT(DISTINCT f2.connected_realm_id)
+         FROM item_realm_features_latest f2
+         WHERE f2.region = ${region} AND f2.item_id = t.item_id) as hot_realm_count
+      FROM top_items t
+      LEFT JOIN (
         SELECT connected_realm_id, MIN(name) as name
         FROM realms
         GROUP BY connected_realm_id
-      ),
-      total_counts AS (
-        SELECT item_id, COUNT(DISTINCT connected_realm_id) as cnt
-        FROM item_realm_aggregates WHERE region = '${region}'
-        GROUP BY item_id
-      ),
-      hot_counts AS (
-        SELECT item_id, COUNT(DISTINCT connected_realm_id) as cnt
-        FROM item_realm_features_latest WHERE region = '${region}'
-        GROUP BY item_id
-      )
+      ) ri ON t.connected_realm_id = ri.connected_realm_id
+      ORDER BY t.hotness_score DESC
+    `
+        : await sql`
       SELECT
         f.item_id,
         f.connected_realm_id,
@@ -100,67 +133,30 @@ export async function GET(request: NextRequest) {
         i.item_subclass,
         m.icon_url,
         ri.name as realm_name,
-        COALESCE(tc.cnt, 0) as total_realm_count,
-        COALESCE(hc.cnt, 0) as hot_realm_count
+        (SELECT COUNT(DISTINCT a.connected_realm_id)
+         FROM item_realm_aggregates a
+         WHERE a.region = ${region} AND a.item_id = f.item_id) as total_realm_count,
+        (SELECT COUNT(DISTINCT f2.connected_realm_id)
+         FROM item_realm_features_latest f2
+         WHERE f2.region = ${region} AND f2.item_id = f.item_id) as hot_realm_count
       FROM item_realm_features_latest f
-      JOIN best_per_item b ON f.item_id = b.item_id AND ${sortCol} = b.best_score
-      LEFT JOIN items i ON f.item_id = i.id
+      JOIN items i ON f.item_id = i.id AND i.item_subclass = 'Decor'
       LEFT JOIN item_media m ON f.item_id = m.item_id
-      LEFT JOIN realm_info ri ON f.connected_realm_id = ri.connected_realm_id
-      LEFT JOIN total_counts tc ON f.item_id = tc.item_id
-      LEFT JOIN hot_counts hc ON f.item_id = hc.item_id
-      WHERE ${whereClause}
-      ORDER BY ${sortCol} DESC
-      LIMIT ${limit}
-    `;
-    } else {
-      query = `
-      WITH realm_info AS (
+      LEFT JOIN (
         SELECT connected_realm_id, MIN(name) as name
         FROM realms
         GROUP BY connected_realm_id
-      )
-      SELECT
-        f.item_id,
-        f.connected_realm_id,
-        f.current_price,
-        f.current_demand,
-        f.price_pct_diff,
-        f.demand_pct_diff,
-        f.price_z,
-        f.demand_z,
-        f.hotness_score,
-        f.confidence,
-        f.listing_count,
-        f.total_quantity,
-        f.baseline_window_days,
-        f.updated_at,
-        f.sell_suitability_score,
-        i.name as item_name,
-        i.quality as item_quality,
-        i.level as item_level,
-        i.item_class,
-        i.item_subclass,
-        m.icon_url,
-        ri.name as realm_name,
-        (SELECT COUNT(DISTINCT connected_realm_id)
-         FROM item_realm_aggregates WHERE item_id = f.item_id AND region = f.region) as total_realm_count,
-        (SELECT COUNT(DISTINCT connected_realm_id)
-         FROM item_realm_features_latest WHERE item_id = f.item_id AND region = f.region) as hot_realm_count
-      FROM item_realm_features_latest f
-      LEFT JOIN items i ON f.item_id = i.id
-      LEFT JOIN item_media m ON f.item_id = m.item_id
-      LEFT JOIN realm_info ri ON f.connected_realm_id = ri.connected_realm_id
-      WHERE ${whereClause}
-      ORDER BY ${sortCol} DESC
+      ) ri ON f.connected_realm_id = ri.connected_realm_id
+      WHERE f.region = ${region}
+        AND f.connected_realm_id = ${realm}
+        ${confFilter}
+        ${searchFilter}
+      ORDER BY f.hotness_score DESC
       LIMIT ${limit}
     `;
-    }
-
-    const rows = await sql.unsafe(query);
 
     // --- BATCH alternate realms in ONE query ---
-    // Get top 5 hot alternates for all items at once, then group by item_id in JS
+    // Get top hot alternates for all items at once, then group by item_id in JS
     const itemIds = rows.map((r: any) => r.item_id);
     const bestRealmMap = new Map<number, number>();
     rows.forEach((r: any) => bestRealmMap.set(r.item_id, r.connected_realm_id));
@@ -180,7 +176,10 @@ export async function GET(request: NextRequest) {
             f.confidence,
             f.total_quantity,
             ri.name as realm_name,
-            ROW_NUMBER() OVER (PARTITION BY f.item_id ORDER BY f.sell_suitability_score DESC) as rn
+            ROW_NUMBER() OVER (
+              PARTITION BY f.item_id
+              ORDER BY f.sell_suitability_score DESC, f.hotness_score DESC
+            ) as rn
           FROM item_realm_features_latest f
           LEFT JOIN (
             SELECT connected_realm_id, MIN(name) as name
@@ -208,7 +207,7 @@ export async function GET(request: NextRequest) {
             price_z: alt.price_z,
             demand_z: alt.demand_z,
             sell_suitability_score: alt.sell_suitability_score,
-            current_price: alt.current_price,
+            current_price: Number(alt.current_price),
             confidence: alt.confidence,
             total_quantity: Number(alt.total_quantity),
           });
@@ -233,7 +232,7 @@ export async function GET(request: NextRequest) {
         price_z: row.price_z,
         demand_z: row.demand_z,
         sell_suitability_score: row.sell_suitability_score,
-        current_price: row.current_price,
+        current_price: Number(row.current_price),
         confidence: row.confidence,
         total_quantity: Number(row.total_quantity),
       },
@@ -268,7 +267,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(responseBody, {
       headers: {
-        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+        'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=1800',
         'X-Cache': 'MISS',
       },
     });

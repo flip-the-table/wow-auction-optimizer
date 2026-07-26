@@ -152,6 +152,12 @@ class ItemRealmAggregate(Base):
             "region",
             "connected_realm_id",
         ),
+        # Hot path for the web API: counts/lookups by (region, item_id)
+        Index(
+            "ix_aggregates_region_item",
+            "region",
+            "item_id",
+        ),
     )
 
 
@@ -179,6 +185,11 @@ class ItemRealmDaily(Base):
             "ix_daily_item_region",
             "region",
             "item_id",
+        ),
+        # Supports pruning old history by date in cleanup.py
+        Index(
+            "ix_daily_date",
+            "date",
         ),
     )
 

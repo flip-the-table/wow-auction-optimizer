@@ -167,12 +167,23 @@ function HomePageInner() {
     // Expandable alternate realms
     const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set());
 
-    // Title animation — synced to GIF table flip at ~6.5s
-    const [titleVisible, setTitleVisible] = useState(false);
+    // Title animation — synced to GIF table flip at ~6.5s.
+    // Plays once per session; subsequent loads show the title immediately.
+    const [introState, setIntroState] = useState<'pending' | 'spin' | 'instant'>('pending');
     useEffect(() => {
-        const timer = setTimeout(() => setTitleVisible(true), 6500);
+        let played = false;
+        try { played = !!sessionStorage.getItem('ftt-intro-played'); } catch { }
+        if (played) {
+            setIntroState('instant');
+            return;
+        }
+        const timer = setTimeout(() => {
+            setIntroState('spin');
+            try { sessionStorage.setItem('ftt-intro-played', '1'); } catch { }
+        }, 6500);
         return () => clearTimeout(timer);
     }, []);
+    const titleVisible = introState !== 'pending';
 
     // Sync filter state to URL (so back-navigation preserves state)
     useEffect(() => {
@@ -258,7 +269,7 @@ function HomePageInner() {
                     <img src="/tableflip.gif" alt="Table flip!" style={{ height: '14.4rem', borderRadius: '4px' }} />
                     <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                         <h1
-                            className={`page-title ${!titleVisible ? 'title-hidden' : 'title-spin-in'}`}
+                            className={`page-title ${introState === 'pending' ? 'title-hidden' : introState === 'spin' ? 'title-spin-in' : ''}`}
                         >
                             Flip the <svg className="table-icon" viewBox="0 0 30 26" width="28" height="24" style={{ display: 'inline-block', verticalAlign: '-4px', marginRight: '1px' }}><defs><linearGradient id="tg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor="#f5a623" /><stop offset="100%" stopColor="#e07020" /></linearGradient></defs><polygon points="6,1 28,1 24,6 2,6" fill="url(#tg)" /><polygon points="2,6 6,1 6,3 2,7.5" fill="#c4861e" /><rect x="4" y="6" width="2.5" height="14" rx="0.5" fill="#2a1a0a" /><rect x="21" y="6" width="2.5" height="14" rx="0.5" fill="#2a1a0a" /><rect x="1" y="20" width="8" height="2.5" rx="1" fill="#1a1008" /><rect x="18" y="20" width="8" height="2.5" rx="1" fill="#1a1008" /></svg>able
                         </h1>
@@ -436,7 +447,7 @@ function HomePageInner() {
                                     return (
                                         <React.Fragment key={`${item.item.item_id}-${item.best_realm.connected_realm_id}`}>
                                             <tr
-                                                onClick={() => window.open(`/item/${item.item.item_id}`, '_self')}
+                                                onClick={() => router.push(`/item/${item.item.item_id}`)}
                                                 style={{ animationDelay: `${idx * 20}ms` }}
                                                 className="fade-in"
                                             >
@@ -525,7 +536,7 @@ function HomePageInner() {
                                                                     fontSize: '0.68rem', color: 'var(--text-muted)',
                                                                     cursor: 'pointer',
                                                                 }}
-                                                                onClick={(e) => { e.stopPropagation(); window.open(`/item/${item.item.item_id}`, '_self'); }}
+                                                                onClick={(e) => { e.stopPropagation(); router.push(`/item/${item.item.item_id}`); }}
                                                                 title={`View all ${item.total_realm_count} realms on item detail page`}
                                                             >
                                                                 {item.total_realm_count} total realms →
@@ -582,7 +593,7 @@ function HomePageInner() {
                                                     key={`alt-${item.item.item_id}-${alt.connected_realm_id}`}
                                                     className="alt-realm-row"
                                                     style={{ background: 'rgba(255,255,255,0.02)', cursor: 'pointer' }}
-                                                    onClick={() => window.open(`/item/${item.item.item_id}?realm=${alt.connected_realm_id}`, '_self')}
+                                                    onClick={() => router.push(`/item/${item.item.item_id}?realm=${alt.connected_realm_id}`)}
                                                 >
                                                     <td></td>
                                                     <td style={{ paddingLeft: 20, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
@@ -659,13 +670,13 @@ export default function HomePage() {
         <Suspense fallback={
             <div className="page-container">
                 <div className="page-header">
-                    <h1 className="page-title">Hot Items Radar</h1>
+                    <h1 className="page-title">Flip the Table</h1>
                 </div>
                 <div className="data-table-wrapper">
                     <table className="data-table">
                         <thead>
                             <tr>
-                                {['Item', 'Best Realm', 'Price', 'Price Dev', 'Demand Dev', 'Sizzle', 'Confidence', 'Updated'].map(
+                                {['Item', 'Best Realm', 'Price', 'Qty', 'Price Dev', 'Demand Dev', 'Sizzle', 'Confidence', 'Updated'].map(
                                     (h) => <th key={h}>{h}</th>
                                 )}
                             </tr>
@@ -673,7 +684,7 @@ export default function HomePage() {
                         <tbody>
                             {Array.from({ length: 10 }).map((_, i) => (
                                 <tr key={i}>
-                                    {Array.from({ length: 8 }).map((_, j) => (
+                                    {Array.from({ length: 9 }).map((_, j) => (
                                         <td key={j}>
                                             <div className="skeleton" style={{ height: 18, width: 60 + (i % 5) * 15 }} />
                                         </td>

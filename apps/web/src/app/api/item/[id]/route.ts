@@ -13,10 +13,18 @@ export async function GET(
   try {
     const region = process.env.REGION || 'us';
     const itemId = parseInt(params.id, 10);
+    if (!Number.isFinite(itemId)) {
+      return NextResponse.json(
+        { error: 'Invalid item id' },
+        { status: 400, headers: { 'Cache-Control': 'no-store' } }
+      );
+    }
     const { searchParams } = new URL(request.url);
 
-    const realm = searchParams.get('realm') ? parseInt(searchParams.get('realm')!) : null;
-    const days = Math.min(Math.max(parseInt(searchParams.get('days') || '14'), 1), 90);
+    const realmRaw = parseInt(searchParams.get('realm') ?? '', 10);
+    const realm = Number.isFinite(realmRaw) ? realmRaw : null;
+    const daysRaw = parseInt(searchParams.get('days') || '14', 10);
+    const days = Math.min(Math.max(Number.isFinite(daysRaw) ? daysRaw : 14, 1), 90);
 
     // --- Cache check ---
     const cacheKey = `item:${itemId}:${region}:${realm ?? 'all'}:${days}`;
@@ -141,25 +149,31 @@ export async function GET(
       // 5. Daily time-series
       (async () => {
         try {
+          // NOTE: take the most recent N days (DESC + LIMIT), then re-sort ascending
+          // for charting. ASC + LIMIT would return the oldest days ever recorded.
           let dailyRows;
           if (realm !== null) {
             dailyRows = await sql`
-            SELECT d.date, d.median_price, d.demand_proxy, d.listing_count, d.total_quantity
-            FROM item_realm_daily d
-            WHERE d.item_id = ${itemId} AND d.region = ${region} AND d.connected_realm_id = ${realm}
-            ORDER BY d.date ASC LIMIT ${days}
+            SELECT * FROM (
+              SELECT d.date, d.median_price, d.demand_proxy, d.listing_count, d.total_quantity
+              FROM item_realm_daily d
+              WHERE d.item_id = ${itemId} AND d.region = ${region} AND d.connected_realm_id = ${realm}
+              ORDER BY d.date DESC LIMIT ${days}
+            ) recent ORDER BY date ASC
           `;
           } else {
             dailyRows = await sql`
-            SELECT
-              d.date,
-              AVG(d.median_price)::bigint as median_price,
-              AVG(d.demand_proxy) as demand_proxy,
-              SUM(d.listing_count) as listing_count,
-              SUM(d.total_quantity) as total_quantity
-            FROM item_realm_daily d
-            WHERE d.item_id = ${itemId} AND d.region = ${region}
-            GROUP BY d.date ORDER BY d.date ASC LIMIT ${days}
+            SELECT * FROM (
+              SELECT
+                d.date,
+                AVG(d.median_price)::bigint as median_price,
+                AVG(d.demand_proxy) as demand_proxy,
+                SUM(d.listing_count) as listing_count,
+                SUM(d.total_quantity) as total_quantity
+              FROM item_realm_daily d
+              WHERE d.item_id = ${itemId} AND d.region = ${region}
+              GROUP BY d.date ORDER BY d.date DESC LIMIT ${days}
+            ) recent ORDER BY date ASC
           `;
           }
           return dailyRows.map((row: any) => ({
