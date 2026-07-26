@@ -68,6 +68,26 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(funnel, { headers: { 'Cache-Control': 'no-store' } });
     }
 
+    // Diagnostic mode 2: what item classes do profession recipes actually craft?
+    if (searchParams.get('debug') === '2') {
+      const breakdown = await sql`
+        SELECT
+          COALESCE(i.item_class, '(unresolved)') as item_class,
+          COALESCE(i.item_subclass, '(unresolved)') as item_subclass,
+          COUNT(*) as recipe_count
+        FROM recipes r
+        LEFT JOIN items i ON i.id = r.crafted_item_id
+        WHERE r.crafted_item_id IS NOT NULL
+        GROUP BY 1, 2
+        ORDER BY recipe_count DESC
+        LIMIT 25
+      `;
+      return NextResponse.json(
+        breakdown.map((b: any) => ({ ...b, recipe_count: Number(b.recipe_count) })),
+        { headers: { 'Cache-Control': 'no-store' } }
+      );
+    }
+
     const decorFilter = decorOnly ? sql`AND i.item_subclass = 'Decor'` : sql``;
     const professionFilter = profession !== null ? sql`AND r.profession_id = ${profession}` : sql``;
     const searchFilter = searchPattern
@@ -105,9 +125,23 @@ export async function GET(request: NextRequest) {
           ${professionFilter}
           ${searchFilter}
       ),
+      best_market AS (
+        -- Single pass over the region's aggregates with a window argmax.
+        -- Per-recipe index probes (LATERAL/DISTINCT ON) degrade badly when the
+        -- table is bloated after mass deletes; one sequential scan is stable.
+        SELECT item_id, connected_realm_id, median_buyout, total_quantity, listing_count
+        FROM (
+          SELECT
+            a.item_id, a.connected_realm_id, a.median_buyout, a.total_quantity, a.listing_count,
+            ROW_NUMBER() OVER (PARTITION BY a.item_id ORDER BY a.median_buyout DESC) as rn
+          FROM item_realm_aggregates a
+          WHERE a.region = ${region}
+            AND a.median_buyout > 0
+            AND a.item_id IN (SELECT crafted_item_id FROM sellable)
+        ) ranked
+        WHERE rn = 1
+      ),
       best AS (
-        -- LATERAL top-1 forces an indexed nested-loop per recipe; a DISTINCT ON
-        -- join here previously seq-scanned aggregates and timed out.
         SELECT
           s.*,
           a.connected_realm_id,
@@ -116,15 +150,7 @@ export async function GET(request: NextRequest) {
           a.listing_count as market_listings,
           ri.name as realm_name
         FROM sellable s
-        JOIN LATERAL (
-          SELECT a2.connected_realm_id, a2.median_buyout, a2.total_quantity, a2.listing_count
-          FROM item_realm_aggregates a2
-          WHERE a2.region = ${region}
-            AND a2.item_id = s.crafted_item_id
-            AND a2.median_buyout > 0
-          ORDER BY a2.median_buyout DESC
-          LIMIT 1
-        ) a ON true
+        JOIN best_market a ON a.item_id = s.crafted_item_id
         LEFT JOIN (
           SELECT connected_realm_id, MIN(name) as name
           FROM realms GROUP BY connected_realm_id
