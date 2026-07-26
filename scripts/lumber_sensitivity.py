@@ -19,6 +19,8 @@ Run: python scripts/lumber_sensitivity.py --fixtures
 """
 
 import argparse
+import asyncio
+import json
 import statistics
 import sys
 from datetime import datetime, timedelta, timezone
@@ -175,12 +177,143 @@ def run_fixture_analysis() -> int:
     return 1 if failures else 0
 
 
+# --- Real-data mode (Phases 13-14) ------------------------------------------
+
+async def run_db_analysis() -> int:
+    """Sensitivity matrix + concentration analysis over STORED valuations.
+
+    Re-derives the price chain from each row's preserved raw inputs
+    (input_snapshot_json + listing columns) under swept parameters; ages are
+    measured at original compute time (computed_at - input timestamps), so
+    results are reproducible regardless of when this analysis runs.
+    """
+    from sqlalchemy import text
+    from packages.shared.db import get_async_engine
+
+    engine = get_async_engine()
+    async with engine.connect() as conn:
+        rows = (await conn.execute(text("""
+            SELECT v.*, m.material_key
+            FROM decor_recipe_valuations v
+            JOIN constrained_materials m ON m.id = v.constrained_material_id
+        """))).mappings().all()
+    await engine.dispose()
+
+    if not rows:
+        print("No stored valuations — import a verified mapping and run compute first.")
+        return 2
+
+    def prep(v):
+        snap = v["input_snapshot_json"]
+        if isinstance(snap, str):
+            snap = json.loads(snap)
+        oldest = snap.get("oldest_input_at")
+        age_h = None
+        if oldest and v["computed_at"]:
+            oldest_dt = datetime.fromisoformat(oldest)
+            age_h = max(0.0, (v["computed_at"] - oldest_dt).total_seconds() / 3600)
+        return snap, age_h
+
+    def evaluate(v, snap, age_h, p: "LumberFormulaParams"):
+        """Re-derive eligibility + implied value under swept params."""
+        if v["listing_median"] is None or not v["crafted_quantity"]:
+            return None
+        if (v["listing_count"] or 0) < p.min_listing_count: return None
+        if (v["listed_quantity"] or 0) < p.min_listed_quantity: return None
+        if age_h is None or age_h > p.max_input_age_hours: return None
+        cross = snap.get("cross_realm_median")
+        if cross and v["listing_median"] > cross * p.max_cross_realm_multiplier:
+            return None
+        other = v["other_reagent_cost"]
+        if other is None: return None
+        realized = round(v["listing_median"] * p.realized_price_factor)
+        gross = round(realized * v["crafted_quantity"])
+        net = round(gross * (1 - p.ah_cut)) - round(gross * p.deposit_loss_rate)
+        navail = net - other
+        implied = round(navail / v["constrained_material_quantity"])
+        market = min((v["churn_rate"] or 0) * 24, 1.0) * (v["listed_quantity"] or 0)
+        contribution = round(max(0, navail / v["crafted_quantity"]) * market * p.seller_capture_factor)
+        freshness = max(0.0, 1 - age_h / p.max_input_age_hours)
+        weight = max(freshness * (v["liquidity_score"] or 0) * (v["input_quality_score"] or 0), 1e-9)
+        return implied, contribution, weight
+
+    prepared = [(v, *prep(v)) for v in rows]
+    scopes = sorted({(v["connected_realm_id"], v["material_key"]) for v, _, _ in prepared})
+    print(f"Stored valuations: {len(rows)} across {len(scopes)} (realm, material) scopes\n")
+
+    def cell(p):
+        per_scope = {}
+        for v, snap, age_h in prepared:
+            r = evaluate(v, snap, age_h, p)
+            if r is None:
+                continue
+            per_scope.setdefault((v["connected_realm_id"], v["material_key"]), []).append(
+                (v["decor_recipe_id"], *r))
+        # global summary across scopes
+        all_vals, all_ws, opp = [], [], 0
+        realms_with_summary = 0
+        for scope, entries in per_scope.items():
+            vals = [e[1] for e in entries]; ws = [e[3] for e in entries]
+            opp += sum(e[2] for e in entries)
+            all_vals += vals; all_ws += ws
+            if len(entries) >= p.min_eligible_recipes:
+                realms_with_summary += 1
+        ref = weighted_median(all_vals, all_ws) if len(all_vals) >= p.min_eligible_recipes else None
+        cons = weighted_percentile(all_vals, all_ws, p.conservative_percentile) if ref is not None else None
+        best = max(all_vals) if all_vals else None
+        return ref, cons, best, len(all_vals), realms_with_summary, opp, per_scope
+
+    # Invariants on real data
+    base = cell(params())
+    hi_capture = cell(params(seller_capture_factor=0.5))
+    inv_fail = 0
+    if base[0] != hi_capture[0] or base[2] != hi_capture[2]:
+        inv_fail += 1; print("INVARIANT VIOLATION: capture factor moved base values")
+    if base[5] >= hi_capture[5]:
+        inv_fail += 1; print("INVARIANT VIOLATION: capture factor did not raise daily opportunity")
+    print(f"Invariants on real data: {'PASS' if inv_fail == 0 else 'FAIL'}\n")
+
+    print(f"{'configuration':34s} {'reference':>10s} {'conserv.':>10s} {'best':>10s} "
+          f"{'elig':>5s} {'scopes':>6s} {'daily opp':>12s}")
+    for label, p in (
+        [(f"realized_price_factor={x}", params(realized_price_factor=x)) for x in (0.65, 0.75, 0.85, 0.95)]
+        + [(f"seller_capture_factor={x}", params(seller_capture_factor=x)) for x in (0.05, 0.10, 0.25, 0.50)]
+        + [(f"min_eligible_recipes={x}", params(min_eligible_recipes=x)) for x in (3, 5, 10)]
+        + [(f"max_input_age_hours={x}", params(max_input_age_hours=x)) for x in (8, 12, 24)]
+    ):
+        ref, cons, best, n, scopes_ok, opp, _ = cell(p)
+        print(f"{label:34s} {fmt_g(ref):>10s} {fmt_g(cons):>10s} {fmt_g(best):>10s} "
+              f"{n:>5d} {scopes_ok:>6d} {fmt_g(opp):>12s}")
+
+    # Concentration analysis (Phase 14) at defaults
+    print("\nConcentration by (realm, material) at default params "
+          "(flags: top1>35%, top3>70%, best>3x conservative, <5 eligible):")
+    _, _, _, _, _, _, per_scope = base
+    for scope, entries in sorted(per_scope.items()):
+        vals = sorted((e[1] for e in entries), reverse=True)
+        ws = [e[3] for e in entries]
+        tw = sum(ws)
+        shares = sorted((w / tw for w in ws), reverse=True)
+        top1, top3 = shares[0], sum(shares[:3])
+        ref = weighted_median([e[1] for e in entries], ws)
+        cons = weighted_percentile([e[1] for e in entries], ws, 0.25)
+        flags = []
+        if top1 > 0.35: flags.append("TOP1>35%")
+        if top3 > 0.70: flags.append("TOP3>70%")
+        if cons and cons > 0 and vals[0] > 3 * cons: flags.append("BEST>3xCONS")
+        if len(entries) < 5: flags.append("<5 ELIGIBLE")
+        print(f"  realm {scope[0]:>5} {scope[1]:22s} n={len(entries):>3} "
+              f"top1={top1:.0%} top3={top3:.0%} ref={fmt_g(ref)} "
+              f"best={fmt_g(vals[0])} {' '.join(flags)}")
+
+    return 1 if inv_fail else 0
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--fixtures", action="store_true")
     ap.add_argument("--db", action="store_true")
     args = ap.parse_args()
     if args.db:
-        print("DB mode requires a populated verified mapping — not yet available.")
-        sys.exit(2)
+        sys.exit(asyncio.run(run_db_analysis()))
     sys.exit(run_fixture_analysis())

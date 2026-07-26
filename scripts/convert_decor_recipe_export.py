@@ -147,11 +147,21 @@ def normalize_captures(db: dict) -> list[dict]:
         if isinstance(rgs, dict): rgs = list(rgs.values())
         out.append({
             "recipe_name": c.get("recipe_name"),
+            "recipe_identifier": c.get("recipe_identifier"),
             "output_item_id": (c.get("output") or {}).get("item_id"),
             "output_name": (c.get("output") or {}).get("name"),
             "crafted_quantity": c.get("crafted_quantity"),
             "materials": [(m.get("item_id"), m.get("name"), m.get("quantity")) for m in mats],
-            "reagents": [(r.get("item_id"), r.get("name"), r.get("quantity")) for r in rgs],
+            # required reagents (optional flag preserved separately)
+            "reagents": [(r.get("item_id"), r.get("name"), r.get("quantity"))
+                         for r in rgs if not r.get("optional")],
+            "optional_reagents": [(r.get("item_id"), r.get("name"), r.get("quantity"))
+                                  for r in rgs if r.get("optional")],
+            "station": c.get("station"),
+            "unlock": c.get("unlock"),
+            "repeatable": c.get("repeatable"),
+            "variable_output": c.get("variable_output"),
+            "screenshot_ref": c.get("screenshot_ref"),
             "notes": c.get("notes"),
             "meta": c.get("meta") or {},
             "raw": c.get("raw_inputs") or [],
@@ -159,26 +169,70 @@ def normalize_captures(db: dict) -> list[dict]:
     return out
 
 
+def normalize_vendor_observations(db: dict) -> list[dict]:
+    obs = db.get("vendor_observations") or []
+    if isinstance(obs, dict):
+        obs = list(obs.values())
+    return [
+        {
+            "item_id": o.get("item_id"),
+            "item_name": o.get("item_name"),
+            "observation": o.get("observation"),
+            "meta": o.get("meta") or {},
+        }
+        for o in obs
+    ]
+
+
+def is_incomplete(r: dict) -> list[str]:
+    """Phase 6 INCOMPLETE classification: structurally unusable capture."""
+    missing = []
+    if not r["output_item_id"]:
+        missing.append("output")
+    if not r["crafted_quantity"] or r["crafted_quantity"] <= 0:
+        missing.append("crafted_quantity")
+    if not r["materials"]:
+        missing.append("constrained_material")
+    return missing
+
+
 def recipe_key(name: str, output_id) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-")[:80]
     return f"{slug or 'recipe'}-{output_id}"
 
 
-def cross_verify(primary: list[dict], second: list[dict]) -> dict[str, str]:
-    """Return {recipe_key: VERIFIED|CONFLICTED} for recipes present in both."""
+def cross_verify(primary: list[dict], second: list[dict]) -> tuple[dict[str, str], list[str]]:
+    """Return ({recipe_key: VERIFIED|CONFLICTED}, conflict_details).
+
+    VERIFIED requires exact agreement on: output id, crafted qty, every
+    constrained-material (id, qty), every REQUIRED reagent (id, qty).
+    Optional-reagent differences are reported as warnings, never conflicts.
+    Conflicts are never auto-resolved — the exact differing fields are emitted.
+    """
     def signature(r):
-        return (
-            r["output_item_id"], r["crafted_quantity"],
-            tuple(sorted((i, q) for i, _, q in r["materials"])),
-            tuple(sorted((i, q) for i, _, q in r["reagents"])),
-        )
+        return {
+            "output_item_id": r["output_item_id"],
+            "crafted_quantity": r["crafted_quantity"],
+            "materials": tuple(sorted((i, q) for i, _, q in r["materials"])),
+            "required_reagents": tuple(sorted((i, q) for i, _, q in r["reagents"])),
+        }
     by_key_2 = {recipe_key(r["recipe_name"], r["output_item_id"]): r for r in second}
-    result = {}
+    result, details = {}, []
     for r in primary:
         k = recipe_key(r["recipe_name"], r["output_item_id"])
-        if k in by_key_2:
-            result[k] = "VERIFIED" if signature(r) == signature(by_key_2[k]) else "CONFLICTED"
-    return result
+        if k not in by_key_2:
+            continue
+        a, b = signature(r), signature(by_key_2[k])
+        if a == b:
+            result[k] = "VERIFIED"
+            if sorted(r["optional_reagents"]) != sorted(by_key_2[k]["optional_reagents"]):
+                details.append(f"{k}: optional reagents differ between captures (warning only)")
+        else:
+            result[k] = "CONFLICTED"
+            for field in a:
+                if a[field] != b[field]:
+                    details.append(f"{k}: CONFLICT in {field}: A={a[field]!r} B={b[field]!r}")
+    return result, details
 
 
 # --- Optional live identity validation --------------------------------------
@@ -233,12 +287,17 @@ def main() -> int:
         return 2
     out_path = REPO / f"data/decor_recipes/v{args.out_version}.candidate.json"
 
-    primary = normalize_captures(lua_to_python(Path(args.export).read_text(encoding="utf-8")))
+    primary_db = lua_to_python(Path(args.export).read_text(encoding="utf-8"))
+    primary = normalize_captures(primary_db)
+    vendor_obs = normalize_vendor_observations(primary_db)
     if not primary:
         print("ERROR: export contains no captures"); return 2
-    second = (normalize_captures(lua_to_python(Path(args.second).read_text(encoding="utf-8")))
-              if args.second else [])
-    verification = cross_verify(primary, second) if second else {}
+    second = []
+    if args.second:
+        second_db = lua_to_python(Path(args.second).read_text(encoding="utf-8"))
+        second = normalize_captures(second_db)
+        vendor_obs += normalize_vendor_observations(second_db)
+    verification, conflict_details = (cross_verify(primary, second) if second else ({}, []))
 
     registry = load_registry()
     errors, warnings = [], []
@@ -246,6 +305,7 @@ def main() -> int:
     seen_keys: set[str] = set()
     recipes = []
 
+    incomplete_count = 0
     for r in primary:
         key = recipe_key(r["recipe_name"], r["output_item_id"])
         label = f"recipe {key}"
@@ -253,12 +313,11 @@ def main() -> int:
             errors.append(f"{label}: duplicate capture of the same recipe/output — resolve manually")
             continue
         seen_keys.add(key)
-        if not r["output_item_id"]:
-            errors.append(f"{label}: missing output item id"); continue
-        if not r["crafted_quantity"] or r["crafted_quantity"] <= 0:
-            errors.append(f"{label}: invalid crafted quantity"); continue
-        if not r["materials"]:
-            errors.append(f"{label}: no constrained material captured"); continue
+        missing = is_incomplete(r)
+        if missing:
+            incomplete_count += 1
+            warnings.append(f"{label}: INCOMPLETE (missing {', '.join(missing)}) — excluded from candidate")
+            continue
 
         status = verification.get(key, "UNVERIFIED")
         if status == "CONFLICTED":
@@ -289,6 +348,13 @@ def main() -> int:
                           "pricing_scope": "REGION_COMMODITY", "optional": False,
                           "_captured_name": name})
             all_ids.add(iid)
+        for iid, name, qty in r["optional_reagents"]:
+            if not iid or not qty or qty <= 0:
+                errors.append(f"{label}: invalid optional reagent line"); continue
+            other.append({"item_id": iid, "quantity": qty,
+                          "pricing_scope": "REGION_COMMODITY", "optional": True,
+                          "_captured_name": name})
+            all_ids.add(iid)
         all_ids.add(r["output_item_id"])
 
         meta = r["meta"]
@@ -297,10 +363,15 @@ def main() -> int:
             "decor_item_id": r["output_item_id"],
             "decor_item_name": r["output_name"],
             "crafted_quantity": r["crafted_quantity"],
-            "crafting_system": "HOUSING_CRAFTING_UI",
+            "crafting_system": r.get("station") or "HOUSING_CRAFTING_UI",
             "recipe_name": r["recipe_name"],
             "lumber_reagents": lumber_reagents,
             "other_reagents": other,
+            "_recipe_identifier": r.get("recipe_identifier"),
+            "_unlock": r.get("unlock"),
+            "_repeatable": r.get("repeatable"),
+            "_variable_output": r.get("variable_output"),
+            "_screenshot_ref": r.get("screenshot_ref"),
             "source_reference": (
                 f"in-game capture by {meta.get('character', '?')} "
                 f"({meta.get('region', '?')}), build {meta.get('game_version', '?')}."
@@ -342,12 +413,27 @@ def main() -> int:
     }
     out_path.write_text(json.dumps(doc, indent=2), encoding="utf-8", newline="\n")
 
-    print(f"--- Validation report ({len(recipes)} captured, {len(kept)} in candidate) ---")
+    # Vendor observations: separate report (facts about lumber acquisition,
+    # NOT part of the recipe source schema). Kept verbatim for review; the
+    # material registry is updated manually from this evidence.
+    if vendor_obs:
+        vo_path = REPO / f"data/decor_recipes/vendor_observations.v{args.out_version}.json"
+        vo_path.write_text(json.dumps({
+            "_comment": "Raw in-game vendor observations for constrained materials. "
+                        "Blizzard purchase_price metadata and observed vendor availability "
+                        "are SEPARATE facts — only the latter belongs here.",
+            "observations": vendor_obs,
+        }, indent=2), encoding="utf-8", newline="\n")
+        print(f"Vendor observations written: {vo_path} ({len(vendor_obs)} entries)")
+
+    print(f"--- Validation report ({len(recipes) + incomplete_count} captured, {len(kept)} in candidate) ---")
     for e in errors: print("ERROR:", e)
     for w in warnings: print("WARN: ", w)
+    for d in conflict_details: print("DIFF: ", d)
     verified = sum(1 for r in kept if r["verification_status"] == "VERIFIED")
+    conflicted = len(recipes) - len(kept)
     print(f"VERIFIED: {verified} | UNVERIFIED: {len(kept) - verified} | "
-          f"CONFLICTED (excluded): {len(recipes) - len(kept)}")
+          f"CONFLICTED (excluded): {conflicted} | INCOMPLETE (excluded): {incomplete_count}")
     print(f"Candidate written: {out_path}")
     if errors:
         print("Result: ERRORS present — candidate is NOT importable as-is.")

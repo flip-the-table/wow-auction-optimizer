@@ -1,0 +1,36 @@
+name: Lumber Analysis
+
+# Post-import shadow analysis (Phases 10-14): real calculation traces with
+# independent recomputation + real-data sensitivity/concentration matrix.
+# Read-only against the database; run after a verified mapping is imported
+# and a compute cycle has produced valuations.
+on:
+  workflow_dispatch:
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Real calculation traces (independent recomputation)
+        run: python scripts/lumber_traces.py --min 10 --limit 12
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL_SYNC: ${{ secrets.DATABASE_URL_SYNC }}
+
+      - name: Real-data sensitivity + concentration matrix
+        run: python scripts/lumber_sensitivity.py --db
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL_SYNC: ${{ secrets.DATABASE_URL_SYNC }}

@@ -28,10 +28,12 @@ Copy it (after /reload or logout so it flushes) and feed it to
   scripts/convert_decor_recipe_export.py
 ]]
 
-local CAPTURE_VERSION = "0.1.0"
+local CAPTURE_VERSION = "0.2.0"
 local draft = nil
 
-FlipTheTableCaptureDB = FlipTheTableCaptureDB or { captures = {} }
+FlipTheTableCaptureDB = FlipTheTableCaptureDB or {}
+FlipTheTableCaptureDB.captures = FlipTheTableCaptureDB.captures or {}
+FlipTheTableCaptureDB.vendor_observations = FlipTheTableCaptureDB.vendor_observations or {}
 
 local function msg(text)
     DEFAULT_CHAT_FRAME:AddMessage("|cfff5a623FTT Capture:|r " .. text)
@@ -70,15 +72,44 @@ function handlers.new(rest)
     if rest == "" then msg("usage: /fttcap new <recipe name>"); return end
     draft = {
         recipe_name = rest,
+        recipe_identifier = nil,   -- /fttcap rid — schematic id when visible in UI
         output = nil,
         crafted_quantity = nil,
         constrained_materials = {},
-        other_reagents = {},
+        other_reagents = {},       -- entries carry optional=true when via optreagent
+        station = nil,             -- /fttcap station
+        unlock = nil,              -- /fttcap unlock
+        repeatable = nil,          -- /fttcap repeat yes|no (nil = not observed)
+        variable_output = nil,     -- /fttcap varout yes|no (nil = not observed)
+        screenshot_ref = nil,      -- /fttcap shot
         notes = nil,
         raw_inputs = {},  -- provenance: exact strings the user pasted
     }
     msg("Draft started: '" .. rest .. "'. Now /fttcap out [link] <qty>.")
 end
+
+local function setField(field, rest, usage)
+    if not draft then msg("No draft — /fttcap new <name> first."); return end
+    if rest == "" then msg("usage: " .. usage); return end
+    draft[field] = rest
+    msg(field .. " recorded.")
+end
+
+function handlers.rid(rest) setField("recipe_identifier", rest, "/fttcap rid <schematic id as shown>") end
+function handlers.station(rest) setField("station", rest, "/fttcap station <station/interface name+tier>") end
+function handlers.unlock(rest) setField("unlock", rest, "/fttcap unlock <requirement, or 'none'>") end
+function handlers.shot(rest) setField("screenshot_ref", rest, "/fttcap shot <screenshot filename or note ref>") end
+
+local function setYesNo(field, rest, usage)
+    if not draft then msg("No draft."); return end
+    rest = rest:lower()
+    if rest ~= "yes" and rest ~= "no" then msg("usage: " .. usage); return end
+    draft[field] = (rest == "yes")
+    msg(field .. " = " .. rest)
+end
+
+handlers["repeat"] = function(rest) setYesNo("repeatable", rest, "/fttcap repeat yes|no") end
+function handlers.varout(rest) setYesNo("variable_output", rest, "/fttcap varout yes|no") end
 
 function handlers.out(rest)
     if not draft then msg("No draft — /fttcap new <name> first."); return end
@@ -104,6 +135,45 @@ end
 function handlers.mat(rest) addLine("constrained_materials", "mat", rest) end
 function handlers.reagent(rest) addLine("other_reagents", "reagent", rest) end
 
+function handlers.optreagent(rest)
+    if not draft then msg("No draft — /fttcap new <name> first."); return end
+    local id, name, qty = parseLinkAndQty(rest)
+    if not id or not qty or qty < 1 then
+        msg("usage: /fttcap optreagent [link] <qty>"); return
+    end
+    table.insert(draft.other_reagents,
+        { item_id = id, name = name, quantity = qty, optional = true })
+    table.insert(draft.raw_inputs, "optreagent|" .. rest)
+    msg(("OPTIONAL reagent added: %s (id %d) x%d"):format(name or "?", id, qty))
+end
+
+-- Vendor survey for lumber types: works OUTSIDE recipe drafts. Record exactly
+-- what you observe at the vendor (or that you searched and found none).
+-- Example: /fttcap vendor [Thalassian Lumber] sold by Provisioner X in Silvermoon,
+--          5g each, unlimited stock, no rep gate
+--          /fttcap vendor [Arden Lumber] no vendor found after checking
+--          housing vendors + faction quartermasters
+function handlers.vendor(rest)
+    local id, name = parseLink(rest)
+    if not id then
+        msg("usage: /fttcap vendor [lumber link] <observation — vendor name/price/currency/limits/gating, or 'no vendor found'>")
+        return
+    end
+    local observation = rest:match("|r%s*(.-)%s*$") or ""
+    if observation == "" then
+        msg("Add the observation text after the link."); return
+    end
+    table.insert(FlipTheTableCaptureDB.vendor_observations, {
+        item_id = id,
+        item_name = name,
+        observation = observation,
+        raw = rest,
+        meta = buildMeta(),
+    })
+    msg(("Vendor observation recorded for %s (id %d). %d total."):format(
+        name or "?", id, #FlipTheTableCaptureDB.vendor_observations))
+end
+
 function handlers.note(rest)
     if not draft then msg("No draft."); return end
     draft.notes = rest
@@ -117,6 +187,10 @@ function handlers.save()
         msg("No constrained material captured — /fttcap mat [lumber link] <qty>. If this recipe truly uses no lumber, it does not belong in this capture.")
         return
     end
+    -- Completeness nudges (soft — capture what you can observe)
+    if not draft.station then msg("Tip: /fttcap station <name> not recorded for this recipe.") end
+    if not draft.unlock then msg("Tip: /fttcap unlock <req or 'none'> not recorded.") end
+    if draft.repeatable == nil then msg("Tip: /fttcap repeat yes|no not recorded.") end
     draft.meta = buildMeta()
     table.insert(FlipTheTableCaptureDB.captures, draft)
     msg(("Saved '%s' (%d total). Data flushes to SavedVariables on /reload or logout."):format(
@@ -148,7 +222,9 @@ function handlers.wipe()
 end
 
 function handlers.help()
-    msg("Commands: new <name> | out [link] <qty> | mat [link] <qty> | reagent [link] <qty> | note <text> | save | list | wipe")
+    msg("Recipe: new <name> | out [link] <qty> | mat [link] <qty> | reagent [link] <qty> | optreagent [link] <qty>")
+    msg("Fields: rid <id> | station <text> | unlock <text> | repeat yes/no | varout yes/no | shot <ref> | note <text>")
+    msg("Other:  vendor [lumber link] <observation> | save | list | wipe")
 end
 
 SLASH_FTTCAP1 = "/fttcap"

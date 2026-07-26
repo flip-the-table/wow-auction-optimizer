@@ -2,7 +2,7 @@
 ## Title: Flip the Table |cfff5a623Decor Recipe Capture|r
 ## Notes: Manual, link-based capture of housing decor recipes for the Flip the Table implied-lumber pipeline. Uses only core item-link APIs — no automation, no AH interaction, no housing-API claims.
 ## Author: Flip the Table
-## Version: 0.1.0
+## Version: 0.2.0
 ## SavedVariables: FlipTheTableCaptureDB
 
 Capture.lua

@@ -19,13 +19,21 @@ your own recipe UI and pasting item links.
 1. Copy `tools/wow-addon/FlipTheTableCapture/` into
    `World of Warcraft/_retail_/Interface/AddOns/` and `/reload`.
 2. Open the housing crafting/workbench UI at the decor station.
-3. For each recipe:
+3. For each recipe (addon v0.2.0):
    - `/fttcap new <recipe name>`
-   - `/fttcap out ` then **shift-click the decor output item** into chat, add the crafted quantity → `/fttcap out [Sturdy Oak Bookshelf] 1`
+   - `/fttcap out ` + **shift-click the decor output** + crafted quantity → `/fttcap out [Sturdy Oak Bookshelf] 1`
    - `/fttcap mat ` + shift-click each **lumber** + its quantity
-   - `/fttcap reagent ` + shift-click each other reagent + quantity
-   - `/fttcap note <station tier / unlock requirements>` (optional)
+   - `/fttcap reagent ` + shift-click each required reagent + quantity
+   - `/fttcap optreagent [link] <qty>` for OPTIONAL reagent slots
+   - `/fttcap station <name/tier>` · `/fttcap unlock <req or 'none'>` · `/fttcap rid <schematic id if shown>`
+   - `/fttcap repeat yes|no` · `/fttcap varout yes|no` (can output quantity vary?)
+   - `/fttcap shot <screenshot filename>` · `/fttcap note <anything else>`
    - `/fttcap save`
+3b. **Vendor survey (once per lumber type, all 12)** — at housing/faction vendors:
+   `/fttcap vendor [Thalassian Lumber] sold by <NPC> in <city>, <price+currency>, <limit/cap>, <rep gate or none>`
+   or `/fttcap vendor [Arden Lumber] no vendor found after checking housing district + quartermasters`.
+   Record what you SEE — the 5g `purchase_price` metadata is NOT evidence of vendor availability.
+3c. Follow the stratified target list in `data/decor_recipes/capture_plan_v1.md` (rules 1-5 there).
 4. `/reload` (flushes SavedVariables), then copy
    `WTF/Account/<ACCOUNT>/SavedVariables/FlipTheTableCapture.lua`.
 5. **For VERIFIED status**: repeat the capture independently (second session or

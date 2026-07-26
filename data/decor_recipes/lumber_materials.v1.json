@@ -1,19 +1,103 @@
 {
-  "_provenance": "Blizzard Game Data API, item search name.en_US='Lumber' + per-item detail, namespace static-12.0.7_67808-us, retrieved 2026-07-27. All 12 items verified 'Binds to Warband' (preview_item.binding) and absent from the live region commodity auction feed (streamed scan, same date) — i.e. not AH-tradeable. purchase_price=50000 appears on all 12 identically and is NOT confirmation of vendor availability (must be verified in-game).",
+  "_provenance": "Blizzard Game Data API, item search name.en_US='Lumber' + per-item detail, namespace static-12.0.7_67808-us, retrieved 2026-07-27. All 12 items verified 'Binds to Warband' (preview_item.binding) and absent from the live region commodity auction feed (streamed scan, same date) \u2014 i.e. not AH-tradeable. purchase_price=50000 appears on all 12 identically and is NOT confirmation of vendor availability (must be verified in-game). vendor_availability is UNKNOWN for all materials pending the in-game vendor survey (/fttcap vendor).",
   "registry_version": "1",
   "game_build_observed": "12.0.7.67808",
   "materials": [
-    { "material_key": "lumber_olemba",     "item_id": 242691, "display_name": "Olemba Lumber",      "is_tradeable": false, "is_account_bound": true },
-    { "material_key": "lumber_ironwood",   "item_id": 245586, "display_name": "Ironwood Lumber",    "is_tradeable": false, "is_account_bound": true },
-    { "material_key": "lumber_dornic_fir", "item_id": 248012, "display_name": "Dornic Fir Lumber",  "is_tradeable": false, "is_account_bound": true },
-    { "material_key": "lumber_coldwind",   "item_id": 251762, "display_name": "Coldwind Lumber",    "is_tradeable": false, "is_account_bound": true },
-    { "material_key": "lumber_bamboo",     "item_id": 251763, "display_name": "Bamboo Lumber",      "is_tradeable": false, "is_account_bound": true },
-    { "material_key": "lumber_ashwood",    "item_id": 251764, "display_name": "Ashwood Lumber",     "is_tradeable": false, "is_account_bound": true },
-    { "material_key": "lumber_shadowmoon", "item_id": 251766, "display_name": "Shadowmoon Lumber",  "is_tradeable": false, "is_account_bound": true },
-    { "material_key": "lumber_fel_touched","item_id": 251767, "display_name": "Fel-Touched Lumber", "is_tradeable": false, "is_account_bound": true },
-    { "material_key": "lumber_darkpine",   "item_id": 251768, "display_name": "Darkpine Lumber",    "is_tradeable": false, "is_account_bound": true },
-    { "material_key": "lumber_arden",      "item_id": 251772, "display_name": "Arden Lumber",       "is_tradeable": false, "is_account_bound": true },
-    { "material_key": "lumber_dragonpine", "item_id": 251773, "display_name": "Dragonpine Lumber",  "is_tradeable": false, "is_account_bound": true },
-    { "material_key": "lumber_thalassian", "item_id": 256963, "display_name": "Thalassian Lumber",  "is_tradeable": false, "is_account_bound": true }
+    {
+      "material_key": "lumber_olemba",
+      "item_id": 242691,
+      "display_name": "Olemba Lumber",
+      "is_tradeable": false,
+      "is_account_bound": true,
+      "vendor_availability": "UNKNOWN"
+    },
+    {
+      "material_key": "lumber_ironwood",
+      "item_id": 245586,
+      "display_name": "Ironwood Lumber",
+      "is_tradeable": false,
+      "is_account_bound": true,
+      "vendor_availability": "UNKNOWN"
+    },
+    {
+      "material_key": "lumber_dornic_fir",
+      "item_id": 248012,
+      "display_name": "Dornic Fir Lumber",
+      "is_tradeable": false,
+      "is_account_bound": true,
+      "vendor_availability": "UNKNOWN"
+    },
+    {
+      "material_key": "lumber_coldwind",
+      "item_id": 251762,
+      "display_name": "Coldwind Lumber",
+      "is_tradeable": false,
+      "is_account_bound": true,
+      "vendor_availability": "UNKNOWN"
+    },
+    {
+      "material_key": "lumber_bamboo",
+      "item_id": 251763,
+      "display_name": "Bamboo Lumber",
+      "is_tradeable": false,
+      "is_account_bound": true,
+      "vendor_availability": "UNKNOWN"
+    },
+    {
+      "material_key": "lumber_ashwood",
+      "item_id": 251764,
+      "display_name": "Ashwood Lumber",
+      "is_tradeable": false,
+      "is_account_bound": true,
+      "vendor_availability": "UNKNOWN"
+    },
+    {
+      "material_key": "lumber_shadowmoon",
+      "item_id": 251766,
+      "display_name": "Shadowmoon Lumber",
+      "is_tradeable": false,
+      "is_account_bound": true,
+      "vendor_availability": "UNKNOWN"
+    },
+    {
+      "material_key": "lumber_fel_touched",
+      "item_id": 251767,
+      "display_name": "Fel-Touched Lumber",
+      "is_tradeable": false,
+      "is_account_bound": true,
+      "vendor_availability": "UNKNOWN"
+    },
+    {
+      "material_key": "lumber_darkpine",
+      "item_id": 251768,
+      "display_name": "Darkpine Lumber",
+      "is_tradeable": false,
+      "is_account_bound": true,
+      "vendor_availability": "UNKNOWN"
+    },
+    {
+      "material_key": "lumber_arden",
+      "item_id": 251772,
+      "display_name": "Arden Lumber",
+      "is_tradeable": false,
+      "is_account_bound": true,
+      "vendor_availability": "UNKNOWN"
+    },
+    {
+      "material_key": "lumber_dragonpine",
+      "item_id": 251773,
+      "display_name": "Dragonpine Lumber",
+      "is_tradeable": false,
+      "is_account_bound": true,
+      "vendor_availability": "UNKNOWN"
+    },
+    {
+      "material_key": "lumber_thalassian",
+      "item_id": 256963,
+      "display_name": "Thalassian Lumber",
+      "is_tradeable": false,
+      "is_account_bound": true,
+      "vendor_availability": "UNKNOWN"
+    }
   ]
 }
