@@ -145,8 +145,10 @@ async def run_cleanup():
         with sync_engine.connect() as conn:
             for table in vacuum_tables:
                 try:
-                    logger.info("VACUUM %s...", table)
-                    conn.execute(text(f"VACUUM {table}"))
+                    logger.info("VACUUM (ANALYZE) %s...", table)
+                    # ANALYZE keeps planner stats current — after mass deletes,
+                    # stale stats caused seq-scan plans and API timeouts
+                    conn.execute(text(f"VACUUM (ANALYZE) {table}"))
                 except Exception as e:
                     logger.warning("VACUUM %s failed (non-fatal): %s", table, e)
             result = conn.execute(text("SELECT pg_size_pretty(pg_database_size(current_database()))"))

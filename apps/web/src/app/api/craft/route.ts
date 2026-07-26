@@ -43,6 +43,31 @@ export async function GET(request: NextRequest) {
 
     const sql = getDb();
 
+    // Diagnostic mode: stage-by-stage funnel counts (never cached)
+    if (searchParams.get('debug') === '1') {
+      const [funnel] = await sql`
+        SELECT
+          (SELECT COUNT(*) FROM recipes) as recipes_total,
+          (SELECT COUNT(*) FROM recipes WHERE crafted_item_id IS NOT NULL) as recipes_with_item,
+          (SELECT COUNT(*) FROM recipe_costs WHERE region = ${region}) as costs_rows,
+          (SELECT COUNT(*) FROM recipe_costs WHERE region = ${region}
+            AND craft_cost > 0 AND reagents_priced = reagents_total) as costs_complete,
+          (SELECT COUNT(*) FROM recipe_costs rc JOIN items i ON i.id = rc.crafted_item_id
+            WHERE rc.region = ${region} AND i.item_subclass = 'Decor') as decor_costed,
+          (SELECT COUNT(*) FROM recipe_costs rc JOIN items i ON i.id = rc.crafted_item_id
+            WHERE rc.region = ${region} AND i.item_subclass = 'Decor'
+            AND rc.craft_cost > 0 AND rc.reagents_priced = rc.reagents_total) as decor_complete,
+          (SELECT COUNT(*) FROM recipe_costs rc
+            WHERE rc.region = ${region} AND EXISTS (
+              SELECT 1 FROM item_realm_aggregates a
+              WHERE a.region = ${region} AND a.item_id = rc.crafted_item_id AND a.median_buyout > 0
+            )) as costed_with_market,
+          (SELECT COUNT(*) FROM recipes r WHERE r.crafted_item_id IS NOT NULL
+            AND NOT EXISTS (SELECT 1 FROM items i WHERE i.id = r.crafted_item_id)) as crafted_unresolved
+      `;
+      return NextResponse.json(funnel, { headers: { 'Cache-Control': 'no-store' } });
+    }
+
     const decorFilter = decorOnly ? sql`AND i.item_subclass = 'Decor'` : sql``;
     const professionFilter = profession !== null ? sql`AND r.profession_id = ${profession}` : sql``;
     const searchFilter = searchPattern
@@ -81,7 +106,9 @@ export async function GET(request: NextRequest) {
           ${searchFilter}
       ),
       best AS (
-        SELECT DISTINCT ON (s.recipe_id)
+        -- LATERAL top-1 forces an indexed nested-loop per recipe; a DISTINCT ON
+        -- join here previously seq-scanned aggregates and timed out.
+        SELECT
           s.*,
           a.connected_realm_id,
           a.median_buyout as sell_price,
@@ -89,14 +116,19 @@ export async function GET(request: NextRequest) {
           a.listing_count as market_listings,
           ri.name as realm_name
         FROM sellable s
-        JOIN item_realm_aggregates a
-          ON a.region = ${region} AND a.item_id = s.crafted_item_id
+        JOIN LATERAL (
+          SELECT a2.connected_realm_id, a2.median_buyout, a2.total_quantity, a2.listing_count
+          FROM item_realm_aggregates a2
+          WHERE a2.region = ${region}
+            AND a2.item_id = s.crafted_item_id
+            AND a2.median_buyout > 0
+          ORDER BY a2.median_buyout DESC
+          LIMIT 1
+        ) a ON true
         LEFT JOIN (
           SELECT connected_realm_id, MIN(name) as name
           FROM realms GROUP BY connected_realm_id
         ) ri ON a.connected_realm_id = ri.connected_realm_id
-        WHERE a.median_buyout IS NOT NULL AND a.median_buyout > 0
-        ORDER BY s.recipe_id, a.median_buyout DESC
       )
       SELECT
         *,
