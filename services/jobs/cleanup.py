@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from sqlalchemy import text
 from packages.shared.config import get_settings
 from packages.shared.db import get_async_engine
+from packages.shared.models import Base
 
 logging.basicConfig(
     level=logging.INFO,
@@ -58,6 +59,11 @@ async def run_cleanup():
     settings = get_settings()
     engine = get_async_engine()
     t0 = time.monotonic()
+
+    # Cleanup runs FIRST in the pipeline: create any missing tables so
+    # prunes/DDL below never race schema creation (idempotent, cheap).
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
     async with engine.begin() as conn:
         # Ensure hot-path indexes exist (no-op when already present)
