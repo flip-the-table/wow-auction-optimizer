@@ -6,8 +6,8 @@ Generated 2026-07-26T23:38Z from the LIVE radar feature set (23 actively-tracked
 1. Work FROM the in-game housing crafting UI, not from this list: open the station and
    capture whichever of these targets appear there. This list guarantees *market* coverage
    (price/liquidity strata); it cannot know which decor is craftable.
-2. For each target NOT found in any crafting UI, record `/fttcap note <name> not craftable`
-   in a dedicated 'not-craftable audit' capture so absence is documented, not assumed.
+2. For each target NOT found in any crafting UI, record `/fttcap audit <name> not craftable`
+   so absence is documented, not assumed (audit notes save outside recipe drafts).
 3. ALSO capture, beyond this list: at least 2 recipes with only lumber, 2 with vendor
    reagents, any recipe with 2+ constrained materials, any with crafted quantity > 1, and
    recipes from at least 2 different stations/tiers if they exist.

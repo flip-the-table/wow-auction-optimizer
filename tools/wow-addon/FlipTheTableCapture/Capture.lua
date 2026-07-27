@@ -28,7 +28,7 @@ Copy it (after /reload or logout so it flushes) and feed it to
   scripts/convert_decor_recipe_export.py
 ]]
 
-local CAPTURE_VERSION = "0.2.0"
+local CAPTURE_VERSION = "0.2.1"
 local draft = nil
 
 FlipTheTableCaptureDB = FlipTheTableCaptureDB or {}
@@ -175,9 +175,19 @@ function handlers.vendor(rest)
 end
 
 function handlers.note(rest)
-    if not draft then msg("No draft."); return end
-    draft.notes = rest
-    msg("Note saved.")
+    if not draft then msg("No draft — for out-of-draft notes use /fttcap audit <text>."); return end
+    if rest == "" then msg("usage: /fttcap note <text>"); return end
+    draft.notes = draft.notes and (draft.notes .. "; " .. rest) or rest
+    msg("Note appended.")
+end
+
+-- Out-of-draft audit log (e.g. "Boralus Bottle Lamp NOT in any crafting UI").
+-- Required by capture_plan_v1.md rule 2 — documents absence of recipes.
+function handlers.audit(rest)
+    if rest == "" then msg("usage: /fttcap audit <observation>"); return end
+    FlipTheTableCaptureDB.audit_notes = FlipTheTableCaptureDB.audit_notes or {}
+    table.insert(FlipTheTableCaptureDB.audit_notes, { text = rest, meta = buildMeta() })
+    msg(("Audit note %d recorded."):format(#FlipTheTableCaptureDB.audit_notes))
 end
 
 function handlers.save()
@@ -224,7 +234,7 @@ end
 function handlers.help()
     msg("Recipe: new <name> | out [link] <qty> | mat [link] <qty> | reagent [link] <qty> | optreagent [link] <qty>")
     msg("Fields: rid <id> | station <text> | unlock <text> | repeat yes/no | varout yes/no | shot <ref> | note <text>")
-    msg("Other:  vendor [lumber link] <observation> | save | list | wipe")
+    msg("Other:  vendor [lumber link] <obs> | audit <text> | save | list | wipe")
 end
 
 SLASH_FTTCAP1 = "/fttcap"
