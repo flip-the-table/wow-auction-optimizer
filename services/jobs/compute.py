@@ -409,12 +409,44 @@ async def _run_compute_locked(settings, t0):
         # 30d price percentile, 7d slopes (avg last 3d vs prior 4d), and 90d
         # weekday seasonality. Requires >= 14 days of history and a live,
         # fresh, >= 3-listing market. All listing-derived — not predictions.
+        # Opportunity signals require scanning 90 days of item_realm_daily.
+        # While that heap is still physically bloated (pre-heal), ANY scan
+        # shape risks killing the t4g.micro backend (observed: connection
+        # reset after ~6 min of I/O). Skip gracefully until cleanup's
+        # VACUUM FULL self-heal shrinks the heap — signals appear on the
+        # following run automatically.
+        daily_heap_bytes = (
+            await session.execute(text(
+                "SELECT pg_relation_size('item_realm_daily')"
+            ))
+        ).scalar() or 0
+        if daily_heap_bytes > 3 * 1024**3:
+            logger.warning(
+                "Opportunity signals SKIPPED: item_realm_daily heap is %.1f GB "
+                "(bloated) — waiting for cleanup's VACUUM FULL self-heal",
+                daily_heap_bytes / 1e9,
+            )
+            await session.commit()
+            skip_opportunities = True
+        else:
+            skip_opportunities = False
+
         # Stage the 90-day Decor slice into a temp table FIRST. The previous
         # version joined item_realm_daily against current aggregates directly;
         # the planner chose per-pair index probes into the physically bloated
         # daily heap (post-prune dead space) — catastrophic random I/O that
         # hung for hours. One bounded extraction, then all analytics run
         # against the small temp table with no bad-plan surface.
+        if skip_opportunities:
+            elapsed = time.monotonic() - t0
+            logger.info(
+                "Compute complete: %d item-realm features upserted, %d stale rows purged in %.1fs",
+                total_items, purge_result.rowcount, elapsed,
+            )
+            from services.jobs.lumber_compute import run_lumber_valuations
+            await run_lumber_valuations(session_factory, settings, now)
+            return
+
         await session.execute(text("""
             CREATE TEMP TABLE tmp_decor_daily ON COMMIT DROP AS
             SELECT d.connected_realm_id, d.item_id, d.date,

@@ -181,16 +181,30 @@ async def run_cleanup():
             # with VACUUM FULL — at most ONE table per run to bound the
             # exclusive-lock window; best-effort, never fatal.
             try:
+                # Live rows in every table here are well under 200 bytes;
+                # >500 bytes/row on a multi-GB heap means the file is mostly
+                # dead space from mass pruning.
                 bloated = conn.execute(text("""
                     SELECT relname,
                            pg_relation_size(relid) AS heap_bytes,
                            GREATEST(n_live_tup, 1) AS live
                     FROM pg_stat_user_tables
                     WHERE pg_relation_size(relid) > 2147483648
-                      AND pg_relation_size(relid) / GREATEST(n_live_tup, 1) > 2000
+                      AND pg_relation_size(relid) / GREATEST(n_live_tup, 1) > 500
                     ORDER BY pg_relation_size(relid) DESC
                     LIMIT 1
                 """)).first()
+                if bloated is None:
+                    sizes = conn.execute(text("""
+                        SELECT relname, pg_relation_size(relid) AS b,
+                               GREATEST(n_live_tup, 1) AS live
+                        FROM pg_stat_user_tables
+                        ORDER BY pg_relation_size(relid) DESC LIMIT 3
+                    """)).all()
+                    logger.info(
+                        "Bloat self-heal: no table over threshold. Largest: %s",
+                        [(s.relname, f"{s.b/1e9:.1f}GB", f"{s.b//s.live}B/row") for s in sizes],
+                    )
                 if bloated is not None:
                     logger.info(
                         "Bloat self-heal: VACUUM FULL %s (heap %.1f GB for ~%d live rows)...",
