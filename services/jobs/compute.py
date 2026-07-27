@@ -136,12 +136,20 @@ async def run_compute():
     try:
         await _run_compute_locked(settings, t0)
     finally:
+        # Best-effort: an advisory lock dies with its connection, so a dead
+        # lock_conn means the lock is ALREADY released — unlock failure must
+        # never fail a run whose work committed successfully.
         try:
             await lock_conn.execute(
                 text("SELECT pg_advisory_unlock(:k)"), {"k": COMPUTE_ADVISORY_LOCK_KEY}
             )
+        except Exception as unlock_err:
+            logger.warning("Advisory unlock skipped (lock connection dead): %s", unlock_err)
         finally:
-            await lock_conn.close()
+            try:
+                await lock_conn.close()
+            except Exception:
+                pass
 
 
 async def _run_compute_locked(settings, t0):

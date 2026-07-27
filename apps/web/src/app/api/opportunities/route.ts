@@ -113,7 +113,7 @@ export async function GET(request: NextRequest) {
       generated_at: new Date().toISOString(),
     };
 
-    await cacheSet(cacheKey, body, CACHE_TTL);
+    if (body.status === 'ok') await cacheSet(cacheKey, body, CACHE_TTL);
     return NextResponse.json(body, {
       headers: {
         'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=1800',
