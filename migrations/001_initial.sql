@@ -181,6 +181,52 @@ CREATE TABLE IF NOT EXISTS recipe_market (
     PRIMARY KEY (region, crafted_item_id)
 );
 
+
+CREATE TABLE IF NOT EXISTS wow_token_prices (
+    region              VARCHAR(16) PRIMARY KEY,
+    price               BIGINT NOT NULL,
+    blizzard_updated_at TIMESTAMPTZ,
+    updated_at          TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS wow_token_history (
+    region              VARCHAR(16) NOT NULL,
+    blizzard_updated_at TIMESTAMPTZ NOT NULL,
+    price               BIGINT NOT NULL,
+    PRIMARY KEY (region, blizzard_updated_at)
+);
+
+CREATE TABLE IF NOT EXISTS live_auctions (
+    region             VARCHAR(16) NOT NULL,
+    connected_realm_id INTEGER NOT NULL,
+    auction_id         BIGINT NOT NULL,
+    item_id            INTEGER NOT NULL,
+    quantity           INTEGER NOT NULL DEFAULT 1,
+    time_left          VARCHAR(12) NOT NULL,
+    first_seen_at      TIMESTAMPTZ NOT NULL,
+    last_seen_at       TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (region, connected_realm_id, auction_id)
+);
+CREATE INDEX IF NOT EXISTS ix_live_auctions_item
+    ON live_auctions(region, connected_realm_id, item_id);
+
+CREATE TABLE IF NOT EXISTS auction_flow_daily (
+    region                  VARCHAR(16) NOT NULL,
+    connected_realm_id      INTEGER NOT NULL,
+    item_id                 INTEGER NOT NULL,
+    date                    DATE NOT NULL,
+    removed_early_count     INTEGER NOT NULL DEFAULT 0,
+    removed_early_qty       BIGINT NOT NULL DEFAULT 0,
+    removed_ambiguous_count INTEGER NOT NULL DEFAULT 0,
+    removed_ambiguous_qty   BIGINT NOT NULL DEFAULT 0,
+    new_count               INTEGER NOT NULL DEFAULT 0,
+    new_qty                 BIGINT NOT NULL DEFAULT 0,
+    snapshots               INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (region, connected_realm_id, item_id, date)
+);
+CREATE INDEX IF NOT EXISTS ix_flow_item ON auction_flow_daily(region, item_id, date);
+CREATE INDEX IF NOT EXISTS ix_flow_date ON auction_flow_daily(date);
+
 -- ===== Implied lumber / constrained-material valuation =====
 
 CREATE TABLE IF NOT EXISTS constrained_materials (

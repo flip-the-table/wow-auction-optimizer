@@ -43,6 +43,27 @@ export interface HotItem {
     total_quantity: number | null;
     baseline_window_days: number;
     updated_at: string | null;
+    /** Units/day removed before they could expire — sold OR cancelled, never
+     *  labeled as confirmed sales. Null until flow data accumulates. */
+    removals_per_day?: number | null;
+    /** Listing counts by Blizzard time_left bucket (VERY_LONG = fresh). */
+    listing_age?: { short: number; medium: number; long: number; very_long: number } | null;
+}
+
+export interface TokenResponse {
+    status: 'ok' | 'unavailable';
+    region?: string;
+    price?: number;
+    gold?: number;
+    change_7d_pct?: number | null;
+    blizzard_updated_at?: string | null;
+    updated_at?: string | null;
+}
+
+export async function fetchToken(): Promise<TokenResponse> {
+    const res = await fetch('/api/token', { next: { revalidate: 900 } });
+    if (!res.ok) return { status: 'unavailable' };
+    return res.json();
 }
 
 export interface HotItemsResponse {

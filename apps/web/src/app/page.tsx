@@ -17,6 +17,7 @@ import {
     qualityColor,
     timeAgo,
 } from '@/lib/api';
+import { TokenChip, AgeMixBar } from '@/components/market-widgets';
 
 // --- Gold Amount Component ---
 function GoldAmount({ copper }: { copper: number | null }) {
@@ -325,8 +326,9 @@ function HomePageInner() {
                                     Furnish your Homestead for gold &mdash; flip furniture, stack gold, decorate later.
                                 </p>
                                 {data && (
-                                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                                        {data.region.toUpperCase()} &middot; {data.total_count} items &middot; {data.baseline_window_days}d baseline &middot; Updated {timeAgo(data.generated_at)} &middot; Next data ~{nextRefreshLabel()}
+                                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px', display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                        <span>{data.region.toUpperCase()} &middot; {data.total_count} items &middot; {data.baseline_window_days}d baseline &middot; Updated {timeAgo(data.generated_at)} &middot; Next data ~{nextRefreshLabel()}</span>
+                                        <TokenChip />
                                     </span>
                                 )}
                             </>
@@ -624,9 +626,10 @@ function HomePageInner() {
                                                     <GoldAmount copper={item.current_price} />
                                                 </td>
 
-                                                {/* Quantity */}
+                                                {/* Quantity + listing-age mix */}
                                                 <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-secondary)' }}>
                                                     {item.total_quantity != null ? item.total_quantity.toLocaleString() : '—'}
+                                                    <AgeMixBar age={item.listing_age} />
                                                 </td>
 
                                                 {/* Price Deviation */}
@@ -637,12 +640,20 @@ function HomePageInner() {
                                                     </div>
                                                 </td>
 
-                                                {/* Demand Deviation */}
+                                                {/* Demand Deviation + observed removals */}
                                                 <td>
                                                     <StatBadge value={item.demand_z} formatter={formatZ} />
                                                     <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 2 }}>
                                                         {formatPct(item.demand_pct_diff)}
                                                     </div>
+                                                    {(item.removals_per_day ?? 0) > 0 && (
+                                                        <div
+                                                            style={{ fontSize: '0.68rem', color: 'var(--accent-emerald)', marginTop: 1 }}
+                                                            title="Listings removed before they could have expired (auction-ID tracking) — sold or cancelled, not expiries. Averaged over the last 3 days."
+                                                        >
+                                                            ⚡ ~{item.removals_per_day!.toFixed(1)}/day removed early
+                                                        </div>
+                                                    )}
                                                 </td>
 
                                                 {/* Hotness */}

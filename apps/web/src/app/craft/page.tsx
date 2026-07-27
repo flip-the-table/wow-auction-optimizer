@@ -15,6 +15,7 @@ import {
     qualityColor,
     timeAgo,
 } from '@/lib/api';
+import { TokenChip } from '@/components/market-widgets';
 
 const CHARACTER_STORAGE_KEY = 'ftt-character';
 
@@ -404,8 +405,9 @@ export default function CraftPage() {
                         Cost to craft (region reagent prices) vs best realm to sell &mdash; after 5% AH cut.
                     </p>
                     {data && (
-                        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                            {data.region.toUpperCase()} &middot; {data.total_count} recipes &middot; Updated {timeAgo(data.generated_at)} &middot; Next data ~{nextRefreshLabel()}
+                        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <span>{data.region.toUpperCase()} &middot; {data.total_count} recipes &middot; Updated {timeAgo(data.generated_at)} &middot; Next data ~{nextRefreshLabel()}</span>
+                            <TokenChip />
                         </span>
                     )}
                 </div>

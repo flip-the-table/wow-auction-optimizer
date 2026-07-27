@@ -75,6 +75,8 @@ export async function GET(request: NextRequest) {
           f.baseline_window_days,
           f.updated_at,
           f.sell_suitability_score,
+          f.removals_per_day,
+          f.tl_short, f.tl_medium, f.tl_long, f.tl_very_long,
           i.name as item_name,
           i.quality as item_quality,
           i.level as item_level,
@@ -126,6 +128,8 @@ export async function GET(request: NextRequest) {
         f.baseline_window_days,
         f.updated_at,
         f.sell_suitability_score,
+        f.removals_per_day,
+        f.tl_short, f.tl_medium, f.tl_long, f.tl_very_long,
         i.name as item_name,
         i.quality as item_quality,
         i.level as item_level,
@@ -251,6 +255,14 @@ export async function GET(request: NextRequest) {
       total_quantity: Number(row.total_quantity),
       baseline_window_days: row.baseline_window_days ?? 14,
       updated_at: row.updated_at,
+      // Auction-flow observations (null until data accumulates)
+      removals_per_day: row.removals_per_day != null ? Number(row.removals_per_day) : null,
+      listing_age: row.tl_very_long != null ? {
+        short: Number(row.tl_short ?? 0),
+        medium: Number(row.tl_medium ?? 0),
+        long: Number(row.tl_long ?? 0),
+        very_long: Number(row.tl_very_long ?? 0),
+      } : null,
     }));
 
     const responseBody = {

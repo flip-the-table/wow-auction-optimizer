@@ -635,6 +635,50 @@ body::before {
   display: inline;
 }
 
+/* WoW Token chip */
+.token-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--accent-gold);
+  background: linear-gradient(135deg, rgba(245, 166, 35, 0.10), rgba(224, 112, 32, 0.08));
+  border: 1px solid rgba(245, 166, 35, 0.25);
+  cursor: help;
+  white-space: nowrap;
+}
+
+.token-chip .token-coin {
+  filter: drop-shadow(0 0 3px rgba(255, 215, 0, 0.5));
+}
+
+/* Listing-age mix bar */
+.age-mix {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 3px;
+  cursor: help;
+}
+
+.age-mix-bar {
+  display: flex;
+  width: 56px;
+  height: 5px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: rgba(139, 149, 168, 0.12);
+}
+
+.age-mix-label {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
 /* Alt realm row hover — distinct warm amber tint */
 .alt-realm-row:hover {
   background: rgba(245, 166, 35, 0.08) !important;

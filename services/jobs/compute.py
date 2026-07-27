@@ -167,6 +167,17 @@ async def _run_compute_locked(settings, t0):
 
         logger.info("Processing %d aggregate rows", len(aggregates))
 
+        # Auction-flow observations: units/day removed before they could have
+        # expired (sold or cancelled), averaged over the last 3 observed days.
+        flow_rows = await session.execute(text("""
+            SELECT connected_realm_id, item_id,
+                   SUM(removed_early_qty)::float / GREATEST(COUNT(DISTINCT date), 1) AS per_day
+            FROM auction_flow_daily
+            WHERE region = :region AND date > CURRENT_DATE - 3
+            GROUP BY connected_realm_id, item_id
+        """), {"region": settings.region})
+        removals = {(r.connected_realm_id, r.item_id): float(r.per_day) for r in flow_rows}
+
         features_batch = []
         total_items = 0
 
@@ -242,6 +253,13 @@ async def _run_compute_locked(settings, t0):
                 "total_quantity": agg.total_quantity or 0,
                 "baseline_window_days": settings.baseline_window_days,
                 "snapshot_count": agg.snapshot_count or 0,
+                "removals_per_day": round(
+                    removals.get((agg.connected_realm_id, agg.item_id), 0.0), 4
+                ),
+                "tl_short": agg.tl_short or 0,
+                "tl_medium": agg.tl_medium or 0,
+                "tl_long": agg.tl_long or 0,
+                "tl_very_long": agg.tl_very_long or 0,
                 "updated_at": now,
             })
             total_items += 1

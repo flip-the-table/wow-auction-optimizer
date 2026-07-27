@@ -132,6 +132,13 @@ class ItemRealmAggregate(Base):
     mean_buyout = Column(BigInteger, nullable=True)
     vwap_buyout = Column(BigInteger, nullable=True)
 
+    # Listing-age mix (counts by Blizzard time_left bucket, current snapshot).
+    # VERY_LONG = freshly listed … SHORT = about to expire.
+    tl_short = Column(Integer, nullable=True)
+    tl_medium = Column(Integer, nullable=True)
+    tl_long = Column(Integer, nullable=True)
+    tl_very_long = Column(Integer, nullable=True)
+
     # EWMA running averages
     ewma_price = Column(Float, nullable=True)
     ewma_demand = Column(Float, nullable=True)
@@ -299,6 +306,78 @@ class RecipeMarket(Base):
     demand_per_day = Column(Float, default=0.0)
     updated_at = Column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class WowTokenPrice(Base):
+    """Current WoW Token price per region (official Blizzard endpoint)."""
+    __tablename__ = "wow_token_prices"
+
+    region = Column(String(16), primary_key=True)
+    price = Column(BigInteger, nullable=False)  # copper
+    blizzard_updated_at = Column(DateTime(timezone=True), nullable=True)
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class WowTokenHistory(Base):
+    """Token price history (one row per Blizzard-reported update)."""
+    __tablename__ = "wow_token_history"
+
+    region = Column(String(16), primary_key=True)
+    blizzard_updated_at = Column(DateTime(timezone=True), primary_key=True)
+    price = Column(BigInteger, nullable=False)
+
+
+class LiveAuction(Base):
+    """Previous-snapshot auction IDs for the relevant item universe.
+
+    Diffed against each new snapshot to classify disappearances as
+    removed-early (sold or cancelled — provably NOT expired) vs ambiguous.
+    Replaced per realm on every ingest."""
+    __tablename__ = "live_auctions"
+
+    region = Column(String(16), primary_key=True)
+    connected_realm_id = Column(Integer, primary_key=True)
+    auction_id = Column(BigInteger, primary_key=True)
+    item_id = Column(Integer, nullable=False)
+    quantity = Column(Integer, nullable=False, default=1)
+    time_left = Column(String(12), nullable=False)  # SHORT|MEDIUM|LONG|VERY_LONG
+    first_seen_at = Column(DateTime(timezone=True), nullable=False)
+    last_seen_at = Column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        Index("ix_live_auctions_item", "region", "connected_realm_id", "item_id"),
+    )
+
+
+class AuctionFlowDaily(Base):
+    """Daily auction-flow accumulators per (realm, item).
+
+    removed_early_*: auctions that disappeared although their time_left bucket
+    guaranteed they could not have expired within the snapshot gap — a SALE OR
+    CANCELLATION, never an expiry. removed_ambiguous_*: disappearances that
+    could also be expiries. This is the observational basis for sale-rate
+    estimation (never labeled 'confirmed sales' in the UI)."""
+    __tablename__ = "auction_flow_daily"
+
+    region = Column(String(16), primary_key=True)
+    connected_realm_id = Column(Integer, primary_key=True)
+    item_id = Column(Integer, primary_key=True)
+    date = Column(Date, primary_key=True)
+
+    removed_early_count = Column(Integer, nullable=False, default=0)
+    removed_early_qty = Column(BigInteger, nullable=False, default=0)
+    removed_ambiguous_count = Column(Integer, nullable=False, default=0)
+    removed_ambiguous_qty = Column(BigInteger, nullable=False, default=0)
+    new_count = Column(Integer, nullable=False, default=0)
+    new_qty = Column(BigInteger, nullable=False, default=0)
+    snapshots = Column(Integer, nullable=False, default=0)
+
+    __table_args__ = (
+        Index("ix_flow_item", "region", "item_id", "date"),
+        Index("ix_flow_date", "date"),
     )
 
 
@@ -536,6 +615,15 @@ class ItemRealmFeaturesLatest(Base):
 
     baseline_window_days = Column(Integer, nullable=True, default=14)
     snapshot_count = Column(Integer, nullable=True, default=0)
+
+    # Auction-flow observations (from live_auctions diffing):
+    # units/day removed before they could have expired = sold or cancelled.
+    removals_per_day = Column(Float, nullable=True)
+    # Listing-age mix copied from the aggregate row (current snapshot)
+    tl_short = Column(Integer, nullable=True)
+    tl_medium = Column(Integer, nullable=True)
+    tl_long = Column(Integer, nullable=True)
+    tl_very_long = Column(Integer, nullable=True)
 
     updated_at = Column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

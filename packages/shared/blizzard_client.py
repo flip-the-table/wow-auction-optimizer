@@ -381,6 +381,18 @@ class BlizzardClient:
             use_etag=True,
         )
 
+    async def get_token(self) -> dict:
+        """
+        GET /data/wow/token/index
+        Namespace: dynamic-{region}
+        Returns {last_updated_timestamp (ms), price (copper)}.
+        """
+        return await self.request(
+            "/data/wow/token/index",
+            namespace=self._settings.namespace_dynamic,
+            use_etag=False,
+        )
+
     async def get_profession_index(self) -> list[dict]:
         """
         GET /data/wow/profession/index

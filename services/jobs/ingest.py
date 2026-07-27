@@ -200,6 +200,66 @@ def compute_buyout_stats(auctions: list[dict]) -> dict[int, dict]:
     return result
 
 
+# --- Auction-flow classification (pure, unit-tested) -----------------------
+# Blizzard time_left buckets guarantee a MINIMUM remaining duration. If an
+# auction disappears within a snapshot gap SHORTER than that minimum, it
+# provably did not expire — it was sold or cancelled ("removed early").
+# Anything else is ambiguous (could be an expiry). Never call these "sales".
+TIME_LEFT_MIN_HOURS = {"SHORT": 0.0, "MEDIUM": 0.5, "LONG": 2.0, "VERY_LONG": 12.0}
+
+
+def classify_removal(last_time_left: str, gap_hours: float) -> str:
+    """Return 'early' (provably not expired) or 'ambiguous'."""
+    return (
+        "early"
+        if gap_hours < TIME_LEFT_MIN_HOURS.get(last_time_left, 0.0)
+        else "ambiguous"
+    )
+
+
+def diff_auction_flow(
+    prev: dict[int, tuple[int, int, str]],   # auction_id -> (item_id, qty, time_left)
+    current: dict[int, tuple[int, int, str]],
+    gap_hours: float,
+) -> dict[int, dict]:
+    """Per-item flow counters from an auction-ID diff between snapshots."""
+    flow: dict[int, dict] = {}
+
+    def bucket(item_id):
+        return flow.setdefault(item_id, {
+            "removed_early_count": 0, "removed_early_qty": 0,
+            "removed_ambiguous_count": 0, "removed_ambiguous_qty": 0,
+            "new_count": 0, "new_qty": 0,
+        })
+
+    for auction_id, (item_id, qty, tl) in prev.items():
+        if auction_id in current:
+            continue
+        b = bucket(item_id)
+        kind = classify_removal(tl, gap_hours)
+        b[f"removed_{kind}_count"] += 1
+        b[f"removed_{kind}_qty"] += qty
+    for auction_id, (item_id, qty, _tl) in current.items():
+        if auction_id in prev:
+            continue
+        b = bucket(item_id)
+        b["new_count"] += 1
+        b["new_qty"] += qty
+    return flow
+
+
+def aggregate_time_left(
+    auctions: list[tuple[int, int, int, str]]  # (auction_id, item_id, qty, time_left)
+) -> dict[int, dict[str, int]]:
+    """Listing-age mix per item: listing counts by time_left bucket."""
+    mix: dict[int, dict[str, int]] = {}
+    for _aid, item_id, _qty, tl in auctions:
+        m = mix.setdefault(item_id, {"SHORT": 0, "MEDIUM": 0, "LONG": 0, "VERY_LONG": 0})
+        if tl in m:
+            m[tl] += 1
+    return mix
+
+
 def compute_demand_proxy(
     current_qty: int,
     prev_qty: int,
@@ -292,6 +352,18 @@ async def ingest_realm_auctions(
             if iid in relevant_ids or iid not in classified_ids
         }
 
+    # Auction-level rows for the scoped universe (flow tracking + age mix)
+    scoped_auctions: list[tuple[int, int, int, str]] = []
+    for auction in auctions:
+        a_item = auction.get("item", {}).get("id")
+        a_id = auction.get("id")
+        if a_item in item_stats and a_id is not None:
+            scoped_auctions.append((
+                a_id, a_item, auction.get("quantity", 1),
+                auction.get("time_left", "VERY_LONG"),
+            ))
+    tl_mix = aggregate_time_left(scoped_auctions)
+
     async with session_factory() as session:
         # Get previous aggregate data for this realm to compute demand proxy
         stmt = (
@@ -376,10 +448,15 @@ async def ingest_realm_auctions(
                 prev_count, prev_demand_mean, prev_demand_m2, smoothed_demand
             )
 
+            mix = tl_mix.get(item_id, {})
             rows_to_upsert.append({
                 "p_region": settings.region,
                 "p_cr_id": connected_realm_id,
                 "p_item_id": item_id,
+                "p_tl_short": mix.get("SHORT", 0),
+                "p_tl_medium": mix.get("MEDIUM", 0),
+                "p_tl_long": mix.get("LONG", 0),
+                "p_tl_very_long": mix.get("VERY_LONG", 0),
                 "p_listing_count": stats["listing_count"],
                 "p_total_quantity": stats["total_quantity"],
                 "p_min_buyout": stats["min_buyout"],
@@ -415,6 +492,7 @@ async def ingest_realm_auctions(
             upsert_sql = text("""
                 INSERT INTO item_realm_aggregates (
                     region, connected_realm_id, item_id,
+                    tl_short, tl_medium, tl_long, tl_very_long,
                     listing_count, total_quantity, min_buyout, median_buyout,
                     mean_buyout, vwap_buyout, ewma_price, ewma_demand,
                     demand_proxy_raw, demand_proxy_smoothed,
@@ -422,6 +500,7 @@ async def ingest_realm_auctions(
                     snapshot_count, updated_at
                 ) VALUES (
                     :p_region, :p_cr_id, :p_item_id,
+                    :p_tl_short, :p_tl_medium, :p_tl_long, :p_tl_very_long,
                     :p_listing_count, :p_total_quantity, :p_min_buyout, :p_median_buyout,
                     :p_mean_buyout, :p_vwap_buyout, :p_ewma_price, :p_ewma_demand,
                     :p_demand_raw, :p_demand_smoothed,
@@ -429,6 +508,10 @@ async def ingest_realm_auctions(
                     :p_snap_count, :p_updated_at
                 )
                 ON CONFLICT (region, connected_realm_id, item_id) DO UPDATE SET
+                    tl_short = EXCLUDED.tl_short,
+                    tl_medium = EXCLUDED.tl_medium,
+                    tl_long = EXCLUDED.tl_long,
+                    tl_very_long = EXCLUDED.tl_very_long,
                     listing_count = EXCLUDED.listing_count,
                     total_quantity = EXCLUDED.total_quantity,
                     min_buyout = EXCLUDED.min_buyout,
@@ -450,6 +533,69 @@ async def ingest_realm_auctions(
             for batch_start in range(0, len(rows_to_upsert), 500):
                 batch = rows_to_upsert[batch_start:batch_start + 500]
                 await session.execute(upsert_sql, batch)
+
+        # --- Auction-ID flow tracking (sale/expiry disambiguation) ---
+        prev_rows = await session.execute(text("""
+            SELECT auction_id, item_id, quantity, time_left, first_seen_at
+            FROM live_auctions
+            WHERE region = :r AND connected_realm_id = :cr
+        """), {"r": settings.region, "cr": connected_realm_id})
+        prev_map: dict[int, tuple[int, int, str]] = {}
+        prev_first_seen: dict[int, datetime] = {}
+        for row in prev_rows:
+            prev_map[row.auction_id] = (row.item_id, row.quantity, row.time_left)
+            prev_first_seen[row.auction_id] = row.first_seen_at
+
+        current_map = {a_id: (item_id, qty, tl) for a_id, item_id, qty, tl in scoped_auctions}
+        flow = diff_auction_flow(prev_map, current_map, dt_hours)
+
+        if flow:
+            flow_sql = text("""
+                INSERT INTO auction_flow_daily (
+                    region, connected_realm_id, item_id, date,
+                    removed_early_count, removed_early_qty,
+                    removed_ambiguous_count, removed_ambiguous_qty,
+                    new_count, new_qty, snapshots
+                ) VALUES (
+                    :r, :cr, :item, :d, :rec, :req, :rac, :raq, :nc, :nq, 1
+                )
+                ON CONFLICT (region, connected_realm_id, item_id, date) DO UPDATE SET
+                    removed_early_count = auction_flow_daily.removed_early_count + EXCLUDED.removed_early_count,
+                    removed_early_qty = auction_flow_daily.removed_early_qty + EXCLUDED.removed_early_qty,
+                    removed_ambiguous_count = auction_flow_daily.removed_ambiguous_count + EXCLUDED.removed_ambiguous_count,
+                    removed_ambiguous_qty = auction_flow_daily.removed_ambiguous_qty + EXCLUDED.removed_ambiguous_qty,
+                    new_count = auction_flow_daily.new_count + EXCLUDED.new_count,
+                    new_qty = auction_flow_daily.new_qty + EXCLUDED.new_qty,
+                    snapshots = auction_flow_daily.snapshots + 1
+            """)
+            flow_batch = [{
+                "r": settings.region, "cr": connected_realm_id, "item": item_id,
+                "d": today,
+                "rec": f["removed_early_count"], "req": f["removed_early_qty"],
+                "rac": f["removed_ambiguous_count"], "raq": f["removed_ambiguous_qty"],
+                "nc": f["new_count"], "nq": f["new_qty"],
+            } for item_id, f in flow.items()]
+            for batch_start in range(0, len(flow_batch), 500):
+                await session.execute(flow_sql, flow_batch[batch_start:batch_start + 500])
+
+        # Replace the realm's live set (first_seen preserved for survivors)
+        await session.execute(text(
+            "DELETE FROM live_auctions WHERE region = :r AND connected_realm_id = :cr"
+        ), {"r": settings.region, "cr": connected_realm_id})
+        if current_map:
+            live_sql = text("""
+                INSERT INTO live_auctions (
+                    region, connected_realm_id, auction_id, item_id, quantity,
+                    time_left, first_seen_at, last_seen_at
+                ) VALUES (:r, :cr, :aid, :item, :qty, :tl, :fs, :ls)
+            """)
+            live_batch = [{
+                "r": settings.region, "cr": connected_realm_id, "aid": a_id,
+                "item": item_id, "qty": qty, "tl": tl,
+                "fs": prev_first_seen.get(a_id, now), "ls": now,
+            } for a_id, (item_id, qty, tl) in current_map.items()]
+            for batch_start in range(0, len(live_batch), 500):
+                await session.execute(live_sql, live_batch[batch_start:batch_start + 500])
 
         # --- Daily summary UPSERT (lightweight time-series) ---
         if daily_rows:
@@ -549,6 +695,40 @@ async def ingest_commodities(client: BlizzardClient, session_factory, settings) 
 
     logger.info("Commodities: %d distinct items upserted", len(rows))
     return len(rows)
+
+
+async def ingest_token_price(client: BlizzardClient, session_factory, settings) -> None:
+    """Fetch the WoW Token price (gold cost of 30 days game time)."""
+    try:
+        data = await client.get_token()
+    except Exception as e:
+        logger.warning("Token price fetch failed (non-fatal): %s", e)
+        return
+    price = data.get("price")
+    ts_ms = data.get("last_updated_timestamp")
+    if not price:
+        return
+    blizz_ts = (
+        datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc) if ts_ms else None
+    )
+    now = datetime.now(timezone.utc)
+    async with session_factory() as session:
+        await session.execute(text("""
+            INSERT INTO wow_token_prices (region, price, blizzard_updated_at, updated_at)
+            VALUES (:r, :p, :bts, :now)
+            ON CONFLICT (region) DO UPDATE SET
+                price = EXCLUDED.price,
+                blizzard_updated_at = EXCLUDED.blizzard_updated_at,
+                updated_at = EXCLUDED.updated_at
+        """), {"r": settings.region, "p": price, "bts": blizz_ts, "now": now})
+        if blizz_ts:
+            await session.execute(text("""
+                INSERT INTO wow_token_history (region, blizzard_updated_at, price)
+                VALUES (:r, :bts, :p)
+                ON CONFLICT (region, blizzard_updated_at) DO NOTHING
+            """), {"r": settings.region, "bts": blizz_ts, "p": price})
+        await session.commit()
+    logger.info("WoW Token: %s copper (%.0fg)", price, price / 10000)
 
 
 async def queue_unresolved_items(session_factory, item_ids: set[int]):
@@ -657,6 +837,9 @@ async def run_ingest():
 
         # Step 3: Ingest region-wide commodities (reagent prices for craft costs)
         await ingest_commodities(client, session_factory, settings)
+
+        # Step 3.5: WoW Token price (official endpoint; current + history)
+        await ingest_token_price(client, session_factory, settings)
 
         # Step 4: Queue unresolved items for metadata
         await queue_unresolved_items(session_factory, all_item_ids)

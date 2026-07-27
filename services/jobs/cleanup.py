@@ -40,6 +40,16 @@ REQUIRED_INDEXES = [
     "CREATE INDEX IF NOT EXISTS ix_daily_date ON item_realm_daily(date)",
     # Schema evolution (create_all only creates missing tables, not columns)
     "ALTER TABLE IF EXISTS recipe_market ADD COLUMN IF NOT EXISTS demand_per_day DOUBLE PRECISION DEFAULT 0",
+    # Listing-age mix + auction-flow columns (2026-07 batch)
+    "ALTER TABLE IF EXISTS item_realm_aggregates ADD COLUMN IF NOT EXISTS tl_short INTEGER",
+    "ALTER TABLE IF EXISTS item_realm_aggregates ADD COLUMN IF NOT EXISTS tl_medium INTEGER",
+    "ALTER TABLE IF EXISTS item_realm_aggregates ADD COLUMN IF NOT EXISTS tl_long INTEGER",
+    "ALTER TABLE IF EXISTS item_realm_aggregates ADD COLUMN IF NOT EXISTS tl_very_long INTEGER",
+    "ALTER TABLE IF EXISTS item_realm_features_latest ADD COLUMN IF NOT EXISTS removals_per_day DOUBLE PRECISION",
+    "ALTER TABLE IF EXISTS item_realm_features_latest ADD COLUMN IF NOT EXISTS tl_short INTEGER",
+    "ALTER TABLE IF EXISTS item_realm_features_latest ADD COLUMN IF NOT EXISTS tl_medium INTEGER",
+    "ALTER TABLE IF EXISTS item_realm_features_latest ADD COLUMN IF NOT EXISTS tl_long INTEGER",
+    "ALTER TABLE IF EXISTS item_realm_features_latest ADD COLUMN IF NOT EXISTS tl_very_long INTEGER",
 ]
 
 
@@ -93,6 +103,15 @@ async def run_cleanup():
             before_snapshots, after_snapshots, deleted_snapshots,
         )
 
+        # Prune auction-flow history (90 days, same policy as daily prices)
+        result = await conn.execute(
+            text(
+                "DELETE FROM auction_flow_daily "
+                f"WHERE date < CURRENT_DATE - {int(MAX_DAILY_HISTORY_DAYS)}"
+            )
+        )
+        logger.info("Auction-flow cleanup: %d rows deleted", result.rowcount)
+
         # Prune old daily history rows (table otherwise grows without bound).
         # NOTE: constant is inlined — SQLAlchemy text() does not parse a bind
         # param immediately followed by a ::cast (":days::int" reaches Postgres raw).
@@ -142,6 +161,8 @@ async def run_cleanup():
         "item_realm_features_latest",
         "item_realm_aggregates",
         "item_realm_daily",
+        "live_auctions",
+        "auction_flow_daily",
     ]
     try:
         with sync_engine.connect() as conn:
