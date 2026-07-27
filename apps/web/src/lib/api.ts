@@ -60,6 +60,47 @@ export interface TokenResponse {
     updated_at?: string | null;
 }
 
+export interface OpportunityRow {
+    item: { item_id: number; name: string | null; quality: string | null; icon_url: string | null };
+    connected_realm_id: number;
+    realm_name: string | null;
+    current_price: number | null;
+    listing_count: number | null;
+    history_days: number;
+    price_percentile_30d: number | null;
+    price_slope_7d: number | null;
+    demand_slope_7d: number | null;
+    supply_slope_7d: number | null;
+    best_sell_day: number | null;    // 0=Sunday .. 6=Saturday
+    best_day_uplift: number | null;
+    opportunity_score: number | null;
+    removals_per_day: number | null;
+    listing_age: { short: number; medium: number; long: number; very_long: number } | null;
+    computed_at: string | null;
+}
+
+export interface OpportunitiesResponse {
+    status: 'ok' | 'no_data';
+    rows: OpportunityRow[];
+    total_returned: number;
+    generated_at?: string;
+}
+
+export async function fetchOpportunities(params: {
+    realm?: number;
+    sort?: string;
+    limit?: number;
+}): Promise<OpportunitiesResponse> {
+    const sp = new URLSearchParams();
+    if (params.realm) sp.set('realm', String(params.realm));
+    if (params.sort) sp.set('sort', params.sort);
+    if (params.limit) sp.set('limit', String(params.limit));
+    const res = await fetch(`/api/opportunities?${sp}`, { next: { revalidate: 300 } });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body?.error || `API error: ${res.status}`);
+    return body;
+}
+
 export async function fetchToken(): Promise<TokenResponse> {
     const res = await fetch('/api/token', { next: { revalidate: 900 } });
     if (!res.ok) return { status: 'unavailable' };

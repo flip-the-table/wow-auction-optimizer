@@ -408,6 +408,14 @@ function HomePageInner() {
                     ⚒ Craftable Margins
                 </a>
                 <a
+                    href="/watch"
+                    className="btn btn-secondary"
+                    style={{ textDecoration: 'none' }}
+                    title="Buy windows, supply squeezes and weekly sell timing from each item's own history"
+                >
+                    🎯 Opportunities
+                </a>
+                <a
                     href="/lumber"
                     className="btn btn-secondary"
                     style={{ textDecoration: 'none' }}

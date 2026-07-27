@@ -169,6 +169,7 @@ async def run_cleanup():
         "item_realm_daily",
         "live_auctions",
         "auction_flow_daily",
+        "item_opportunities",
     ]
     try:
         with sync_engine.connect() as conn:

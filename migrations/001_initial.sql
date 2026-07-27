@@ -227,6 +227,29 @@ CREATE TABLE IF NOT EXISTS auction_flow_daily (
 CREATE INDEX IF NOT EXISTS ix_flow_item ON auction_flow_daily(region, item_id, date);
 CREATE INDEX IF NOT EXISTS ix_flow_date ON auction_flow_daily(date);
 
+
+CREATE TABLE IF NOT EXISTS item_opportunities (
+    region               VARCHAR(16) NOT NULL,
+    connected_realm_id   INTEGER NOT NULL,
+    item_id              INTEGER NOT NULL,
+    current_price        BIGINT,
+    listing_count        INTEGER,
+    history_days         INTEGER NOT NULL DEFAULT 0,
+    price_percentile_30d DOUBLE PRECISION,
+    price_slope_7d       DOUBLE PRECISION,
+    demand_slope_7d      DOUBLE PRECISION,
+    supply_slope_7d      DOUBLE PRECISION,
+    best_sell_day        INTEGER,
+    best_day_uplift      DOUBLE PRECISION,
+    opportunity_score    DOUBLE PRECISION,
+    computed_at          TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (region, connected_realm_id, item_id)
+);
+CREATE INDEX IF NOT EXISTS ix_opportunities_score
+    ON item_opportunities(region, opportunity_score DESC);
+CREATE INDEX IF NOT EXISTS ix_opportunities_realm
+    ON item_opportunities(region, connected_realm_id, opportunity_score DESC);
+
 -- ===== Implied lumber / constrained-material valuation =====
 
 CREATE TABLE IF NOT EXISTS constrained_materials (

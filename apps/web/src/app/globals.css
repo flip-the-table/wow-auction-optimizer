@@ -679,6 +679,41 @@ body::before {
   white-space: nowrap;
 }
 
+/* Price-position gauge: dot on a green→red 30-day range track */
+.price-gauge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: help;
+}
+
+.price-gauge-track {
+  position: relative;
+  width: 64px;
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(90deg,
+      rgba(16, 185, 129, 0.55) 0%,
+      rgba(245, 166, 35, 0.45) 55%,
+      rgba(239, 68, 68, 0.55) 100%);
+}
+
+.price-gauge-dot {
+  position: absolute;
+  top: -2px;
+  width: 8px;
+  height: 10px;
+  border-radius: 3px;
+  background: #fff;
+  box-shadow: 0 0 4px rgba(255, 255, 255, 0.6);
+}
+
+.price-gauge-label {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
 /* Alt realm row hover — distinct warm amber tint */
 .alt-realm-row:hover {
   background: rgba(245, 166, 35, 0.08) !important;

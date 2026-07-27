@@ -381,6 +381,41 @@ class AuctionFlowDaily(Base):
     )
 
 
+class ItemOpportunity(Base):
+    """Precomputed buy/sell opportunity signals per (item, realm).
+
+    Derived from the item's OWN daily history (item_realm_daily):
+      price_percentile_30d  fraction of the last 30 days with median <= current
+      *_slope_7d            avg(last 3d) / avg(prior 4d) - 1
+      best_sell_day         weekday (0=Sunday) with highest 90d avg price
+      opportunity_score     0.4*(1-percentile) + 0.3*clamp(demand_slope)
+                            + 0.3*clamp(-supply_slope)   [buy-side orientation]
+    All DERIVED from listings — not sales predictions."""
+    __tablename__ = "item_opportunities"
+
+    region = Column(String(16), primary_key=True)
+    connected_realm_id = Column(Integer, primary_key=True)
+    item_id = Column(Integer, primary_key=True)
+
+    current_price = Column(BigInteger, nullable=True)
+    listing_count = Column(Integer, nullable=True)
+    history_days = Column(Integer, nullable=False, default=0)
+    price_percentile_30d = Column(Float, nullable=True)
+    price_slope_7d = Column(Float, nullable=True)
+    demand_slope_7d = Column(Float, nullable=True)
+    supply_slope_7d = Column(Float, nullable=True)
+    best_sell_day = Column(Integer, nullable=True)   # 0=Sunday .. 6=Saturday
+    best_day_uplift = Column(Float, nullable=True)   # vs overall avg
+    opportunity_score = Column(Float, nullable=True)
+    computed_at = Column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        Index("ix_opportunities_score", "region", opportunity_score.desc()),
+        Index("ix_opportunities_realm", "region", "connected_realm_id",
+              opportunity_score.desc()),
+    )
+
+
 # =========================================================================
 # Implied lumber / constrained-material valuation (decor conversion engine)
 # =========================================================================
