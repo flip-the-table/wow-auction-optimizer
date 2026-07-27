@@ -122,6 +122,15 @@ async def run_compute():
     # Concurrent-run protection: purges use `updated_at < run_ts`, which is
     # only safe when runs are serialized. Fail fast instead of interleaving.
     lock_conn = await engine.connect()
+    # GitHub-hosted runners sit behind a NAT that drops idle TCP flows after
+    # ~4-5 min. This connection idles for the whole run, and long statements
+    # elsewhere idle at the TCP level while the server works — server-side
+    # keepalives keep both flow types alive (root cause of every
+    # "connection closed in the middle of operation" in this pipeline).
+    for ka in ("SET tcp_keepalives_idle = 60",
+               "SET tcp_keepalives_interval = 10",
+               "SET tcp_keepalives_count = 6"):
+        await lock_conn.execute(text(ka))
     acquired = (
         await lock_conn.execute(
             text("SELECT pg_try_advisory_lock(:k)"), {"k": COMPUTE_ADVISORY_LOCK_KEY}
@@ -162,6 +171,12 @@ async def _run_compute_locked(settings, t0):
         # advisory lock (a 30d/90d history query once ran 2h49m into the
         # workflow timeout). Normal statements here take seconds.
         await session.execute(text("SET statement_timeout = '900000'"))  # 15 min
+        # Server-side TCP keepalives: survive the runner NAT's ~4-min idle cut
+        # during long statements (see lock_conn comment above).
+        for ka in ("SET tcp_keepalives_idle = 60",
+                   "SET tcp_keepalives_interval = 10",
+                   "SET tcp_keepalives_count = 6"):
+            await session.execute(text(ka))
         # Load aggregates for the region, filtering illiquid rows in SQL.
         # (Filtering in Python previously loaded ~1.5M ORM rows to keep ~1k.)
         stmt = (
