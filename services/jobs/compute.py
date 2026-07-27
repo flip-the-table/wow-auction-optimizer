@@ -409,12 +409,16 @@ async def _run_compute_locked(settings, t0):
         # 30d price percentile, 7d slopes (avg last 3d vs prior 4d), and 90d
         # weekday seasonality. Requires >= 14 days of history and a live,
         # fresh, >= 3-listing market. All listing-derived — not predictions.
+        # CORE WORK IS DONE — commit it NOW. The opportunity analytics below
+        # are strictly best-effort: they must never be able to roll back
+        # features/craft-costs/markets (a dropped connection during signal
+        # computation previously rolled back the entire run's work).
+        await session.commit()
+
         # Opportunity signals require scanning 90 days of item_realm_daily.
-        # While that heap is still physically bloated (pre-heal), ANY scan
-        # shape risks killing the t4g.micro backend (observed: connection
-        # reset after ~6 min of I/O). Skip gracefully until cleanup's
-        # VACUUM FULL self-heal shrinks the heap — signals appear on the
-        # following run automatically.
+        # While that heap is physically bloated (pre-heal), any scan risks
+        # killing the t4g.micro backend — skip until cleanup's VACUUM FULL
+        # self-heal shrinks it; signals appear next run automatically.
         daily_heap_bytes = (
             await session.execute(text(
                 "SELECT pg_relation_size('item_realm_daily')"
@@ -426,17 +430,10 @@ async def _run_compute_locked(settings, t0):
                 "(bloated) — waiting for cleanup's VACUUM FULL self-heal",
                 daily_heap_bytes / 1e9,
             )
-            await session.commit()
             skip_opportunities = True
         else:
             skip_opportunities = False
 
-        # Stage the 90-day Decor slice into a temp table FIRST. The previous
-        # version joined item_realm_daily against current aggregates directly;
-        # the planner chose per-pair index probes into the physically bloated
-        # daily heap (post-prune dead space) — catastrophic random I/O that
-        # hung for hours. One bounded extraction, then all analytics run
-        # against the small temp table with no bad-plan surface.
         if skip_opportunities:
             elapsed = time.monotonic() - t0
             logger.info(
@@ -447,113 +444,131 @@ async def _run_compute_locked(settings, t0):
             await run_lumber_valuations(session_factory, settings, now)
             return
 
-        await session.execute(text("""
-            CREATE TEMP TABLE tmp_decor_daily ON COMMIT DROP AS
-            SELECT d.connected_realm_id, d.item_id, d.date,
-                   d.median_price, d.demand_proxy, d.total_quantity
-            FROM item_realm_daily d
-            JOIN items i ON i.id = d.item_id AND i.item_subclass = 'Decor'
-            WHERE d.region = :region AND d.date > CURRENT_DATE - 90
-              AND d.median_price > 0
-        """), {"region": settings.region})
-        await session.execute(text(
-            "CREATE INDEX ON tmp_decor_daily (connected_realm_id, item_id)"
-        ))
+        # Best-effort analytics: any failure here logs a warning and the
+        # run continues — core results are already committed above.
+        try:
+            # Plan-proof extraction: fetch the (small) Decor id list first, then
+            # pull daily rows via tight (region, item_id) index ranges — no join
+            # for the planner to fumble into a giant sort/hash on the weak
+            # instance. All analytics then run on the indexed temp table.
+            decor_ids = [
+                r[0] for r in await session.execute(text(
+                    "SELECT id FROM items WHERE item_subclass = 'Decor'"
+                ))
+            ]
+            await session.execute(text("""
+                CREATE TEMP TABLE tmp_decor_daily ON COMMIT DROP AS
+                SELECT d.connected_realm_id, d.item_id, d.date,
+                       d.median_price, d.demand_proxy, d.total_quantity
+                FROM item_realm_daily d
+                WHERE d.region = :region AND d.item_id = ANY(:ids)
+                  AND d.date > CURRENT_DATE - 90 AND d.median_price > 0
+            """), {"region": settings.region, "ids": decor_ids})
+            await session.execute(text(
+                "CREATE INDEX ON tmp_decor_daily (connected_realm_id, item_id)"
+            ))
 
-        opportunity_stmt = text("""
-            WITH cur AS (
-                SELECT a.connected_realm_id, a.item_id,
-                       a.median_buyout AS current_price, a.listing_count
-                FROM item_realm_aggregates a
-                JOIN items i ON i.id = a.item_id AND i.item_subclass = 'Decor'
-                WHERE a.region = :region AND a.median_buyout > 0
-                  AND a.listing_count >= 3 AND a.updated_at > :stale_cutoff
-            ),
-            hist30 AS (
-                SELECT d.connected_realm_id, d.item_id,
-                    COUNT(*) AS history_days,
-                    AVG((d.median_price <= c.current_price)::int)::float AS price_percentile,
-                    AVG(d.median_price) FILTER (WHERE d.date > CURRENT_DATE - 3) AS p_recent,
-                    AVG(d.median_price) FILTER (WHERE d.date <= CURRENT_DATE - 3
-                                                  AND d.date > CURRENT_DATE - 7) AS p_prior,
-                    AVG(d.demand_proxy) FILTER (WHERE d.date > CURRENT_DATE - 3) AS d_recent,
-                    AVG(d.demand_proxy) FILTER (WHERE d.date <= CURRENT_DATE - 3
-                                                  AND d.date > CURRENT_DATE - 7) AS d_prior,
-                    AVG(d.total_quantity) FILTER (WHERE d.date > CURRENT_DATE - 3) AS q_recent,
-                    AVG(d.total_quantity) FILTER (WHERE d.date <= CURRENT_DATE - 3
-                                                  AND d.date > CURRENT_DATE - 7) AS q_prior
-                FROM tmp_decor_daily d
-                JOIN cur c ON c.connected_realm_id = d.connected_realm_id
-                          AND c.item_id = d.item_id
-                WHERE d.date > CURRENT_DATE - 30
-                GROUP BY d.connected_realm_id, d.item_id
-            ),
-            dow AS (
-                SELECT connected_realm_id, item_id, dow_num, dow_avg,
-                       ROW_NUMBER() OVER (PARTITION BY connected_realm_id, item_id
-                                          ORDER BY dow_avg DESC) AS rn,
-                       AVG(dow_avg) OVER (PARTITION BY connected_realm_id, item_id) AS overall_avg
-                FROM (
+            opportunity_stmt = text("""
+                WITH cur AS (
+                    SELECT a.connected_realm_id, a.item_id,
+                           a.median_buyout AS current_price, a.listing_count
+                    FROM item_realm_aggregates a
+                    JOIN items i ON i.id = a.item_id AND i.item_subclass = 'Decor'
+                    WHERE a.region = :region AND a.median_buyout > 0
+                      AND a.listing_count >= 3 AND a.updated_at > :stale_cutoff
+                ),
+                hist30 AS (
                     SELECT d.connected_realm_id, d.item_id,
-                           EXTRACT(DOW FROM d.date)::int AS dow_num,
-                           AVG(d.median_price) AS dow_avg
+                        COUNT(*) AS history_days,
+                        AVG((d.median_price <= c.current_price)::int)::float AS price_percentile,
+                        AVG(d.median_price) FILTER (WHERE d.date > CURRENT_DATE - 3) AS p_recent,
+                        AVG(d.median_price) FILTER (WHERE d.date <= CURRENT_DATE - 3
+                                                      AND d.date > CURRENT_DATE - 7) AS p_prior,
+                        AVG(d.demand_proxy) FILTER (WHERE d.date > CURRENT_DATE - 3) AS d_recent,
+                        AVG(d.demand_proxy) FILTER (WHERE d.date <= CURRENT_DATE - 3
+                                                      AND d.date > CURRENT_DATE - 7) AS d_prior,
+                        AVG(d.total_quantity) FILTER (WHERE d.date > CURRENT_DATE - 3) AS q_recent,
+                        AVG(d.total_quantity) FILTER (WHERE d.date <= CURRENT_DATE - 3
+                                                      AND d.date > CURRENT_DATE - 7) AS q_prior
                     FROM tmp_decor_daily d
-                    GROUP BY 1, 2, 3
-                ) x
+                    JOIN cur c ON c.connected_realm_id = d.connected_realm_id
+                              AND c.item_id = d.item_id
+                    WHERE d.date > CURRENT_DATE - 30
+                    GROUP BY d.connected_realm_id, d.item_id
+                ),
+                dow AS (
+                    SELECT connected_realm_id, item_id, dow_num, dow_avg,
+                           ROW_NUMBER() OVER (PARTITION BY connected_realm_id, item_id
+                                              ORDER BY dow_avg DESC) AS rn,
+                           AVG(dow_avg) OVER (PARTITION BY connected_realm_id, item_id) AS overall_avg
+                    FROM (
+                        SELECT d.connected_realm_id, d.item_id,
+                               EXTRACT(DOW FROM d.date)::int AS dow_num,
+                               AVG(d.median_price) AS dow_avg
+                        FROM tmp_decor_daily d
+                        GROUP BY 1, 2, 3
+                    ) x
+                )
+                INSERT INTO item_opportunities (
+                    region, connected_realm_id, item_id, current_price, listing_count,
+                    history_days, price_percentile_30d, price_slope_7d,
+                    demand_slope_7d, supply_slope_7d, best_sell_day, best_day_uplift,
+                    opportunity_score, computed_at
+                )
+                SELECT
+                    :region, c.connected_realm_id, c.item_id,
+                    c.current_price, c.listing_count,
+                    h.history_days,
+                    h.price_percentile,
+                    CASE WHEN h.p_prior > 0 THEN h.p_recent / h.p_prior - 1 END,
+                    CASE WHEN h.d_prior > 0 THEN h.d_recent / h.d_prior - 1 END,
+                    CASE WHEN h.q_prior > 0 THEN h.q_recent / h.q_prior - 1 END,
+                    b.dow_num,
+                    CASE WHEN b.overall_avg > 0 THEN b.dow_avg / b.overall_avg - 1 END,
+                    0.4 * (1 - h.price_percentile)
+                    + 0.3 * GREATEST(-1, LEAST(1, COALESCE(
+                        CASE WHEN h.d_prior > 0 THEN h.d_recent / h.d_prior - 1 END, 0)))
+                    + 0.3 * GREATEST(-1, LEAST(1, COALESCE(
+                        -(CASE WHEN h.q_prior > 0 THEN h.q_recent / h.q_prior - 1 END), 0))),
+                    :run_ts
+                FROM cur c
+                JOIN hist30 h ON h.connected_realm_id = c.connected_realm_id
+                             AND h.item_id = c.item_id
+                LEFT JOIN dow b ON b.rn = 1
+                               AND b.connected_realm_id = c.connected_realm_id
+                               AND b.item_id = c.item_id
+                WHERE h.history_days >= 14
+                ON CONFLICT (region, connected_realm_id, item_id) DO UPDATE SET
+                    current_price = EXCLUDED.current_price,
+                    listing_count = EXCLUDED.listing_count,
+                    history_days = EXCLUDED.history_days,
+                    price_percentile_30d = EXCLUDED.price_percentile_30d,
+                    price_slope_7d = EXCLUDED.price_slope_7d,
+                    demand_slope_7d = EXCLUDED.demand_slope_7d,
+                    supply_slope_7d = EXCLUDED.supply_slope_7d,
+                    best_sell_day = EXCLUDED.best_sell_day,
+                    best_day_uplift = EXCLUDED.best_day_uplift,
+                    opportunity_score = EXCLUDED.opportunity_score,
+                    computed_at = EXCLUDED.computed_at
+            """)
+            opp_result = await session.execute(
+                opportunity_stmt,
+                {"region": settings.region, "run_ts": now, "stale_cutoff": stale_cutoff},
             )
-            INSERT INTO item_opportunities (
-                region, connected_realm_id, item_id, current_price, listing_count,
-                history_days, price_percentile_30d, price_slope_7d,
-                demand_slope_7d, supply_slope_7d, best_sell_day, best_day_uplift,
-                opportunity_score, computed_at
+            await session.execute(
+                text("DELETE FROM item_opportunities WHERE region = :region AND computed_at < :run_ts"),
+                {"region": settings.region, "run_ts": now},
             )
-            SELECT
-                :region, c.connected_realm_id, c.item_id,
-                c.current_price, c.listing_count,
-                h.history_days,
-                h.price_percentile,
-                CASE WHEN h.p_prior > 0 THEN h.p_recent / h.p_prior - 1 END,
-                CASE WHEN h.d_prior > 0 THEN h.d_recent / h.d_prior - 1 END,
-                CASE WHEN h.q_prior > 0 THEN h.q_recent / h.q_prior - 1 END,
-                b.dow_num,
-                CASE WHEN b.overall_avg > 0 THEN b.dow_avg / b.overall_avg - 1 END,
-                0.4 * (1 - h.price_percentile)
-                + 0.3 * GREATEST(-1, LEAST(1, COALESCE(
-                    CASE WHEN h.d_prior > 0 THEN h.d_recent / h.d_prior - 1 END, 0)))
-                + 0.3 * GREATEST(-1, LEAST(1, COALESCE(
-                    -(CASE WHEN h.q_prior > 0 THEN h.q_recent / h.q_prior - 1 END), 0))),
-                :run_ts
-            FROM cur c
-            JOIN hist30 h ON h.connected_realm_id = c.connected_realm_id
-                         AND h.item_id = c.item_id
-            LEFT JOIN dow b ON b.rn = 1
-                           AND b.connected_realm_id = c.connected_realm_id
-                           AND b.item_id = c.item_id
-            WHERE h.history_days >= 14
-            ON CONFLICT (region, connected_realm_id, item_id) DO UPDATE SET
-                current_price = EXCLUDED.current_price,
-                listing_count = EXCLUDED.listing_count,
-                history_days = EXCLUDED.history_days,
-                price_percentile_30d = EXCLUDED.price_percentile_30d,
-                price_slope_7d = EXCLUDED.price_slope_7d,
-                demand_slope_7d = EXCLUDED.demand_slope_7d,
-                supply_slope_7d = EXCLUDED.supply_slope_7d,
-                best_sell_day = EXCLUDED.best_sell_day,
-                best_day_uplift = EXCLUDED.best_day_uplift,
-                opportunity_score = EXCLUDED.opportunity_score,
-                computed_at = EXCLUDED.computed_at
-        """)
-        opp_result = await session.execute(
-            opportunity_stmt,
-            {"region": settings.region, "run_ts": now, "stale_cutoff": stale_cutoff},
-        )
-        await session.execute(
-            text("DELETE FROM item_opportunities WHERE region = :region AND computed_at < :run_ts"),
-            {"region": settings.region, "run_ts": now},
-        )
-        logger.info("Opportunity signals computed for %d item-realm pairs", opp_result.rowcount)
+            logger.info("Opportunity signals computed for %d item-realm pairs", opp_result.rowcount)
 
-        await session.commit()
+            await session.commit()
+        except Exception as e:
+            logger.warning("Opportunity signals failed (non-fatal): %s", e)
+            try:
+                await session.rollback()
+            except Exception:
+                pass
+
 
     # Implied constrained-material ("lumber") valuations — precomputed here so
     # API requests never scan item_realm_aggregates. Skips cleanly when no

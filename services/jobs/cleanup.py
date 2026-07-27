@@ -211,12 +211,15 @@ async def run_cleanup():
                         bloated.relname, bloated.heap_bytes / 1e9, bloated.live,
                     )
                     conn.execute(text(f"VACUUM FULL {bloated.relname}"))
+                    # relname comes from pg_stat_user_tables (safe to inline);
+                    # NB: a :param immediately followed by ::cast is the known
+                    # SQLAlchemy text() parse trap — do not "simplify" this.
+                    new_size = conn.execute(text(
+                        f"SELECT pg_relation_size('{bloated.relname}')"
+                    )).scalar()
                     logger.info(
                         "Bloat self-heal complete: %s now %.2f GB",
-                        bloated.relname,
-                        conn.execute(text(
-                            "SELECT pg_relation_size(:t::regclass)"
-                        ), {"t": bloated.relname}).scalar() / 1e9,
+                        bloated.relname, (new_size or 0) / 1e9,
                     )
             except Exception as e:
                 logger.warning("Bloat self-heal failed (non-fatal): %s", e)
