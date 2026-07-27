@@ -150,6 +150,10 @@ async def _run_compute_locked(settings, t0):
     now = datetime.now(timezone.utc)
 
     async with session_factory() as session:
+        # A pathological plan must FAIL, not hang for hours holding the
+        # advisory lock (a 30d/90d history query once ran 2h49m into the
+        # workflow timeout). Normal statements here take seconds.
+        await session.execute(text("SET statement_timeout = '900000'"))  # 15 min
         # Load aggregates for the region, filtering illiquid rows in SQL.
         # (Filtering in Python previously loaded ~1.5M ORM rows to keep ~1k.)
         stmt = (
@@ -405,6 +409,25 @@ async def _run_compute_locked(settings, t0):
         # 30d price percentile, 7d slopes (avg last 3d vs prior 4d), and 90d
         # weekday seasonality. Requires >= 14 days of history and a live,
         # fresh, >= 3-listing market. All listing-derived — not predictions.
+        # Stage the 90-day Decor slice into a temp table FIRST. The previous
+        # version joined item_realm_daily against current aggregates directly;
+        # the planner chose per-pair index probes into the physically bloated
+        # daily heap (post-prune dead space) — catastrophic random I/O that
+        # hung for hours. One bounded extraction, then all analytics run
+        # against the small temp table with no bad-plan surface.
+        await session.execute(text("""
+            CREATE TEMP TABLE tmp_decor_daily ON COMMIT DROP AS
+            SELECT d.connected_realm_id, d.item_id, d.date,
+                   d.median_price, d.demand_proxy, d.total_quantity
+            FROM item_realm_daily d
+            JOIN items i ON i.id = d.item_id AND i.item_subclass = 'Decor'
+            WHERE d.region = :region AND d.date > CURRENT_DATE - 90
+              AND d.median_price > 0
+        """), {"region": settings.region})
+        await session.execute(text(
+            "CREATE INDEX ON tmp_decor_daily (connected_realm_id, item_id)"
+        ))
+
         opportunity_stmt = text("""
             WITH cur AS (
                 SELECT a.connected_realm_id, a.item_id,
@@ -427,11 +450,10 @@ async def _run_compute_locked(settings, t0):
                     AVG(d.total_quantity) FILTER (WHERE d.date > CURRENT_DATE - 3) AS q_recent,
                     AVG(d.total_quantity) FILTER (WHERE d.date <= CURRENT_DATE - 3
                                                   AND d.date > CURRENT_DATE - 7) AS q_prior
-                FROM item_realm_daily d
+                FROM tmp_decor_daily d
                 JOIN cur c ON c.connected_realm_id = d.connected_realm_id
                           AND c.item_id = d.item_id
-                WHERE d.region = :region AND d.date > CURRENT_DATE - 30
-                  AND d.median_price > 0
+                WHERE d.date > CURRENT_DATE - 30
                 GROUP BY d.connected_realm_id, d.item_id
             ),
             dow AS (
@@ -443,11 +465,7 @@ async def _run_compute_locked(settings, t0):
                     SELECT d.connected_realm_id, d.item_id,
                            EXTRACT(DOW FROM d.date)::int AS dow_num,
                            AVG(d.median_price) AS dow_avg
-                    FROM item_realm_daily d
-                    JOIN cur c ON c.connected_realm_id = d.connected_realm_id
-                              AND c.item_id = d.item_id
-                    WHERE d.region = :region AND d.date > CURRENT_DATE - 90
-                      AND d.median_price > 0
+                    FROM tmp_decor_daily d
                     GROUP BY 1, 2, 3
                 ) x
             )

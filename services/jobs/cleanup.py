@@ -173,6 +173,40 @@ async def run_cleanup():
     ]
     try:
         with sync_engine.connect() as conn:
+            # Physical-bloat self-heal: plain VACUUM never returns pages to
+            # the OS, so a mass prune leaves a huge sparse heap that turns
+            # later scans into hour-long random-I/O crawls (observed: a 90-day
+            # history query hung 2h49m against the post-prune daily table).
+            # When a table's heap grossly exceeds its live data, rebuild it
+            # with VACUUM FULL — at most ONE table per run to bound the
+            # exclusive-lock window; best-effort, never fatal.
+            try:
+                bloated = conn.execute(text("""
+                    SELECT relname,
+                           pg_relation_size(relid) AS heap_bytes,
+                           GREATEST(n_live_tup, 1) AS live
+                    FROM pg_stat_user_tables
+                    WHERE pg_relation_size(relid) > 2147483648
+                      AND pg_relation_size(relid) / GREATEST(n_live_tup, 1) > 2000
+                    ORDER BY pg_relation_size(relid) DESC
+                    LIMIT 1
+                """)).first()
+                if bloated is not None:
+                    logger.info(
+                        "Bloat self-heal: VACUUM FULL %s (heap %.1f GB for ~%d live rows)...",
+                        bloated.relname, bloated.heap_bytes / 1e9, bloated.live,
+                    )
+                    conn.execute(text(f"VACUUM FULL {bloated.relname}"))
+                    logger.info(
+                        "Bloat self-heal complete: %s now %.2f GB",
+                        bloated.relname,
+                        conn.execute(text(
+                            "SELECT pg_relation_size(:t::regclass)"
+                        ), {"t": bloated.relname}).scalar() / 1e9,
+                    )
+            except Exception as e:
+                logger.warning("Bloat self-heal failed (non-fatal): %s", e)
+
             for table in vacuum_tables:
                 try:
                     logger.info("VACUUM (ANALYZE) %s...", table)
