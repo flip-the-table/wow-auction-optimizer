@@ -331,11 +331,20 @@ export async function GET(request: NextRequest) {
       generated_at: new Date().toISOString(),
     };
 
-    await cacheSet(cacheKey, responseBody, CACHE_TTL);
+    // Empty results are usually transient (data refresh mid-flight) — caching
+    // them at full TTL once served "no recipes" for half an hour after the
+    // data was already back. Cache only non-empty payloads; let empty ones
+    // revalidate quickly.
+    const isEmpty = recipes.length === 0 && knownRecipes.length === 0;
+    if (!isEmpty) {
+      await cacheSet(cacheKey, responseBody, CACHE_TTL);
+    }
 
     return NextResponse.json(responseBody, {
       headers: {
-        'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=1800',
+        'Cache-Control': isEmpty
+          ? 'public, s-maxage=60, stale-while-revalidate=120'
+          : 'public, s-maxage=300, stale-while-revalidate=1800',
         'X-Cache': 'MISS',
       },
     });

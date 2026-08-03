@@ -265,7 +265,7 @@ body::before {
 
 .data-table thead {
   position: sticky;
-  top: 49px; /* sits flush under the sticky nav bar */
+  top: 53px; /* sits flush under the sticky nav bar (53.4px tall) */
   z-index: 90;
 }
 
@@ -663,16 +663,22 @@ body::before {
 .token-chip {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 3px 10px;
+  gap: 6px;
+  padding: 5px 14px;
   border-radius: 999px;
-  font-size: 0.76rem;
+  font-size: 0.88rem;
   font-weight: 600;
   color: var(--accent-gold);
   background: linear-gradient(135deg, rgba(245, 166, 35, 0.10), rgba(224, 112, 32, 0.08));
   border: 1px solid rgba(245, 166, 35, 0.25);
   cursor: help;
   white-space: nowrap;
+}
+
+.token-chip .token-updated {
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 500;
 }
 
 .token-chip .token-coin {

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
-import { TokenResponse, fetchToken, formatGold, formatGoldCompact } from '@/lib/api';
+import { TokenResponse, fetchToken, formatGold, formatGoldCompact, timeAgo } from '@/lib/api';
 
 // --- WoW Token chip: converts everything on the page into "sub money" ------
 export function TokenChip() {
@@ -15,20 +15,26 @@ export function TokenChip() {
     const deltaText = delta != null
         ? ` ${delta >= 0 ? '▲' : '▼'}${Math.abs(delta * 100).toFixed(1)}% 7d`
         : '';
+    // Prefer Blizzard's own price timestamp; fall back to our ingest time
+    const updatedIso = token.blizzard_updated_at ?? token.updated_at;
+    const updatedText = updatedIso ? timeAgo(updatedIso) : null;
     return (
         <span
             className="token-chip"
-            title={`1 WoW Token = 30 days of game time. Earn ${token.gold.toLocaleString()}g a month and the subscription pays for itself.${delta != null ? ` Price ${delta >= 0 ? 'up' : 'down'} ${Math.abs(delta * 100).toFixed(1)}% over 7 days.` : ''}`}
+            title={`1 WoW Token = 30 days of game time. Earn ${token.gold.toLocaleString()}g a month and the subscription pays for itself.${delta != null ? ` Price ${delta >= 0 ? 'up' : 'down'} ${Math.abs(delta * 100).toFixed(1)}% over 7 days.` : ''}${updatedIso ? ` Price as of ${new Date(updatedIso).toLocaleString()}.` : ''}`}
         >
             <span className="token-coin" aria-hidden>🪙</span>
             <span>Token {token.gold.toLocaleString()}g</span>
             {deltaText && (
                 <span style={{
                     color: delta != null && delta < 0 ? 'var(--accent-emerald)' : 'var(--text-muted)',
-                    fontSize: '0.68rem',
+                    fontSize: '0.72rem',
                 }}>
                     {deltaText}
                 </span>
+            )}
+            {updatedText && (
+                <span className="token-updated">· {updatedText}</span>
             )}
         </span>
     );
