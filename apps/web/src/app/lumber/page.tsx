@@ -14,6 +14,7 @@ import {
     qualityColor,
     timeAgo,
 } from '@/lib/api';
+import { SiteNav } from '@/components/market-widgets';
 
 const CHARACTER_STORAGE_KEY = 'ftt-character';
 
@@ -215,12 +216,10 @@ export default function LumberPage() {
 
     return (
         <div className="page-container">
+            <SiteNav />
             {/* Header */}
             <div className="page-header" style={{ alignItems: 'baseline' }}>
                 <div>
-                    <a href="/" style={{ color: 'var(--accent-gold)', textDecoration: 'none', fontSize: '0.85rem', display: 'inline-flex', gap: 4, marginBottom: 8 }}>
-                        &larr; Back to radar
-                    </a>
                     <h1 className="page-title" style={{ margin: 0 }}>Implied Lumber Value</h1>
                     <p className="page-subtitle" style={{ margin: '4px 0 0', maxWidth: 720 }}>
                         This is a <strong>modeled opportunity value</strong> inferred from decor listings and

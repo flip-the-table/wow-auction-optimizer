@@ -15,7 +15,7 @@ import {
     qualityColor,
     timeAgo,
 } from '@/lib/api';
-import { TokenChip } from '@/components/market-widgets';
+import { SiteNav } from '@/components/market-widgets';
 
 const CHARACTER_STORAGE_KEY = 'ftt-character';
 
@@ -388,26 +388,17 @@ export default function CraftPage() {
 
     return (
         <div className="page-container">
+            <SiteNav />
             {/* Header */}
             <div className="page-header" style={{ alignItems: 'baseline' }}>
                 <div>
-                    <a
-                        href="/"
-                        style={{
-                            color: 'var(--accent-gold)', textDecoration: 'none', fontSize: '0.85rem',
-                            display: 'inline-flex', alignItems: 'center', gap: 4, marginBottom: 8,
-                        }}
-                    >
-                        &larr; Back to radar
-                    </a>
                     <h1 className="page-title" style={{ margin: 0 }}>Craftable Margins</h1>
                     <p className="page-subtitle" style={{ margin: '4px 0 0' }}>
                         Cost to craft (region reagent prices) vs best realm to sell &mdash; after 5% AH cut.
                     </p>
                     {data && (
-                        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                            <span>{data.region.toUpperCase()} &middot; {data.total_count} recipes &middot; Updated {timeAgo(data.generated_at)} &middot; Next data ~{nextRefreshLabel()}</span>
-                            <TokenChip />
+                        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                            {data.region.toUpperCase()} &middot; {data.total_count} recipes &middot; Updated {timeAgo(data.generated_at)} &middot; Next data ~{nextRefreshLabel()}
                         </span>
                     )}
                 </div>
@@ -537,14 +528,6 @@ export default function CraftPage() {
                     ↻ Refresh
                 </button>
 
-                <a
-                    href="/lumber"
-                    className="btn btn-secondary"
-                    style={{ marginLeft: 'auto', textDecoration: 'none' }}
-                    title="Modeled opportunity value of lumber inferred from decor conversions"
-                >
-                    🪵 Lumber Value
-                </a>
             </div>
 
             {/* Error */}

@@ -17,7 +17,7 @@ import {
     qualityColor,
     timeAgo,
 } from '@/lib/api';
-import { TokenChip, AgeMixBar } from '@/components/market-widgets';
+import { SiteNav, AgeMixBar } from '@/components/market-widgets';
 
 // --- Gold Amount Component ---
 function GoldAmount({ copper }: { copper: number | null }) {
@@ -310,6 +310,7 @@ function HomePageInner() {
 
     return (
         <div className="page-container">
+            <SiteNav />
             {/* Header */}
             <div className="page-header">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -328,7 +329,6 @@ function HomePageInner() {
                                 {data && (
                                     <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px', display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                                         <span>{data.region.toUpperCase()} &middot; {data.total_count} items &middot; {data.baseline_window_days}d baseline &middot; Updated {timeAgo(data.generated_at)} &middot; Next data ~{nextRefreshLabel()}</span>
-                                        <TokenChip />
                                     </span>
                                 )}
                             </>
@@ -399,30 +399,6 @@ function HomePageInner() {
                     ↻ Refresh
                 </button>
 
-                <a
-                    href="/craft"
-                    className="btn btn-secondary"
-                    style={{ marginLeft: 'auto', textDecoration: 'none' }}
-                    title="Craft cost vs sell price margins for profession recipes"
-                >
-                    ⚒ Craftable Margins
-                </a>
-                <a
-                    href="/watch"
-                    className="btn btn-secondary"
-                    style={{ textDecoration: 'none' }}
-                    title="Buy windows, supply squeezes and weekly sell timing from each item's own history"
-                >
-                    🎯 Opportunities
-                </a>
-                <a
-                    href="/lumber"
-                    className="btn btn-secondary"
-                    style={{ textDecoration: 'none' }}
-                    title="Modeled opportunity value of lumber inferred from decor conversions"
-                >
-                    🪵 Lumber Value
-                </a>
             </div>
 
             {/* Error */}

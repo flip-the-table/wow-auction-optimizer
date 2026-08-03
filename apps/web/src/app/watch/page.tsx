@@ -13,7 +13,7 @@ import {
     qualityColor,
     timeAgo,
 } from '@/lib/api';
-import { TokenChip, AgeMixBar } from '@/components/market-widgets';
+import { SiteNav, AgeMixBar } from '@/components/market-widgets';
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const CHARACTER_STORAGE_KEY = 'ftt-character';
@@ -137,20 +137,17 @@ export default function WatchPage() {
 
     return (
         <div className="page-container">
+            <SiteNav />
             <div className="page-header" style={{ alignItems: 'baseline' }}>
                 <div>
-                    <a href="/" style={{ color: 'var(--accent-gold)', textDecoration: 'none', fontSize: '0.85rem', display: 'inline-flex', gap: 4, marginBottom: 8 }}>
-                        &larr; Back to radar
-                    </a>
                     <h1 className="page-title" style={{ margin: 0 }}>Opportunities</h1>
                     <p className="page-subtitle" style={{ margin: '4px 0 0', maxWidth: 720 }}>
                         Decor markets trading below their own 30-day range, squeezing on supply, or
                         entering their weekly sell window &mdash; computed from each item&rsquo;s own listing history.
                     </p>
                     {data?.generated_at && (
-                        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                            <span>Updated {timeAgo(data.generated_at)} &middot; Next data ~{nextRefreshLabel()}</span>
-                            <TokenChip />
+                        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                            Updated {timeAgo(data.generated_at)} &middot; Next data ~{nextRefreshLabel()}
                         </span>
                     )}
                 </div>
@@ -177,7 +174,6 @@ export default function WatchPage() {
                     <option value="sell_zone">Sort: Sell zone (price at top of range)</option>
                 </select>
                 <button className="btn btn-ghost" onClick={loadData}>↻ Refresh</button>
-                <a href="/craft" className="btn btn-secondary" style={{ marginLeft: 'auto', textDecoration: 'none' }}>⚒ Craftable Margins</a>
             </div>
 
             {error && (

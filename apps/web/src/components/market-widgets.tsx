@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { TokenResponse, fetchToken } from '@/lib/api';
 
 // --- WoW Token chip: converts everything on the page into "sub money" ------
@@ -56,5 +57,34 @@ export function AgeMixBar({ age }: {
             </div>
             <span className="age-mix-label">{freshPct}% fresh</span>
         </div>
+    );
+}
+
+
+// --- Unified site navigation: one consistent home for every surface --------
+const NAV_TABS = [
+    { href: '/', label: 'Radar', icon: '📡' },
+    { href: '/watch', label: 'Opportunities', icon: '🎯' },
+    { href: '/craft', label: 'Craft', icon: '⚒' },
+    { href: '/lumber', label: 'Lumber', icon: '🪵' },
+];
+
+export function SiteNav() {
+    const pathname = usePathname() ?? '/';
+    return (
+        <nav className="site-nav" aria-label="Primary">
+            {NAV_TABS.map(t => {
+                const active = t.href === '/' ? pathname === '/' : pathname.startsWith(t.href);
+                return (
+                    <a key={t.href} href={t.href}
+                        className={'site-tab' + (active ? ' active' : '')}
+                        aria-current={active ? 'page' : undefined}>
+                        <span className="tab-icon" aria-hidden>{t.icon}</span>
+                        {t.label}
+                    </a>
+                );
+            })}
+            <span style={{ marginLeft: 'auto' }}><TokenChip /></span>
+        </nav>
     );
 }
