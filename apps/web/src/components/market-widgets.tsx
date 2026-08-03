@@ -18,13 +18,14 @@ export function TokenChip() {
     // Prefer Blizzard's own price timestamp; fall back to our ingest time
     const updatedIso = token.blizzard_updated_at ?? token.updated_at;
     const updatedText = updatedIso ? timeAgo(updatedIso) : null;
+    const regionLabel = token.region ? token.region.toUpperCase() : null;
     return (
         <span
             className="token-chip"
-            title={`1 WoW Token = 30 days of game time. Earn ${token.gold.toLocaleString()}g a month and the subscription pays for itself.${delta != null ? ` Price ${delta >= 0 ? 'up' : 'down'} ${Math.abs(delta * 100).toFixed(1)}% over 7 days.` : ''}${updatedIso ? ` Price as of ${new Date(updatedIso).toLocaleString()}.` : ''}`}
+            title={`1 WoW Token = 30 days of game time. Earn ${token.gold.toLocaleString()}g a month and the subscription pays for itself.${delta != null ? ` Price ${delta >= 0 ? 'up' : 'down'} ${Math.abs(delta * 100).toFixed(1)}% over 7 days.` : ''}${updatedIso ? ` Price as of ${new Date(updatedIso).toLocaleString()}.` : ''} Source: Blizzard's official game data API — the token price is set region-wide${regionLabel ? ` (identical on every ${regionLabel} realm)` : ''}, not per realm.`}
         >
             <span className="token-coin" aria-hidden>🪙</span>
-            <span>Token {token.gold.toLocaleString()}g</span>
+            <span>{regionLabel ? `${regionLabel} ` : ''}Token {token.gold.toLocaleString()}g</span>
             {deltaText && (
                 <span style={{
                     color: delta != null && delta < 0 ? 'var(--accent-emerald)' : 'var(--text-muted)',
