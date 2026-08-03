@@ -432,7 +432,12 @@ async def _run_compute_locked(settings, t0):
                 FROM auction_flow_daily f
                 JOIN craftable c ON c.item_id = f.item_id
                 WHERE f.region = :region
-                  AND f.date >= CAST(:run_ts AS date) - 7
+                  -- :flow_start is a dedicated date param. Do NOT reuse
+                  -- :run_ts here inside a CAST: Postgres unifies a bind
+                  -- param's type across the whole statement, so CAST(:run_ts
+                  -- AS date) turned the updated_at value below into midnight
+                  -- and the < :run_ts purge then deleted every row inserted.
+                  AND f.date >= :flow_start
                 GROUP BY f.item_id, f.connected_realm_id
             )
             INSERT INTO recipe_market (
@@ -484,7 +489,12 @@ async def _run_compute_locked(settings, t0):
                 updated_at = EXCLUDED.updated_at
         """)
         market_result = await session.execute(
-            market_stmt, {"region": settings.region, "run_ts": now}
+            market_stmt,
+            {
+                "region": settings.region,
+                "run_ts": now,
+                "flow_start": (now - timedelta(days=7)).date(),
+            },
         )
         # Purge market rows for items no longer listed anywhere
         await session.execute(
