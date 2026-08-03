@@ -228,6 +228,9 @@ export interface CraftReagent {
 export interface CraftRecipe {
     recipe_id: number;
     recipe_name: string | null;
+    /** 'base': modern (Dragonflight+) recipe — Blizzard's API omits
+     *  quality-reagent slots, so craft cost covers base reagents only. */
+    cost_basis?: 'full' | 'base';
     profession_id: number;
     profession_name: string | null;
     skill_tier_name: string | null;
@@ -259,6 +262,10 @@ export interface CraftRecipe {
 
 export interface CraftResponse {
     recipes: CraftRecipe[];
+    /** Present when a character was requested and resolved: margins for every
+     *  recipe the character knows (not just the global top-N). */
+    known_recipes?: CraftRecipe[];
+    known_recipe_count?: number;
     professions: { id: number; name: string }[];
     total_count: number;
     region: string;
@@ -272,6 +279,10 @@ export async function fetchCraftable(params: {
     profession?: number;
     search?: string;
     realm?: number;
+    includeInactive?: boolean;
+    includeOldXpacs?: boolean;
+    charRealm?: string;
+    charName?: string;
 }): Promise<CraftResponse> {
     const searchParams = new URLSearchParams();
     if (params.limit) searchParams.set('limit', String(params.limit));
@@ -279,6 +290,12 @@ export async function fetchCraftable(params: {
     if (params.profession) searchParams.set('profession', String(params.profession));
     if (params.search) searchParams.set('search', params.search);
     if (params.realm) searchParams.set('realm', String(params.realm));
+    if (params.includeInactive) searchParams.set('active', '0');
+    if (params.includeOldXpacs) searchParams.set('xpac', 'all');
+    if (params.charRealm && params.charName) {
+        searchParams.set('charRealm', params.charRealm);
+        searchParams.set('charName', params.charName);
+    }
 
     const res = await fetch(`/api/craft?${searchParams}`, {
         next: { revalidate: 60 },

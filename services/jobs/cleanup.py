@@ -51,6 +51,10 @@ REQUIRED_INDEXES = [
     "ALTER TABLE IF EXISTS item_realm_features_latest ADD COLUMN IF NOT EXISTS tl_medium INTEGER",
     "ALTER TABLE IF EXISTS item_realm_features_latest ADD COLUMN IF NOT EXISTS tl_long INTEGER",
     "ALTER TABLE IF EXISTS item_realm_features_latest ADD COLUMN IF NOT EXISTS tl_very_long INTEGER",
+    # Crafted-item provenance: 'api' = from the recipe document, 'name' =
+    # exact-name backfill (Blizzard's recipe API omits crafted_item entirely
+    # for Dragonflight+ recipes) (2026-08)
+    "ALTER TABLE IF EXISTS recipes ADD COLUMN IF NOT EXISTS crafted_item_source VARCHAR(16)",
 ]
 
 

@@ -223,6 +223,10 @@ class Recipe(Base):
     skill_tier_name = Column(String(128), nullable=True)
     category_name = Column(String(256), nullable=True)
     crafted_item_id = Column(Integer, nullable=True, index=True)
+    # 'api' = crafted_item came from the recipe document; 'name' = exact-name
+    # backfill against AH-observed items (Blizzard omits crafted_item for
+    # Dragonflight+ recipes entirely)
+    crafted_item_source = Column(String(16), nullable=True)
     crafted_quantity = Column(Float, default=1.0)
     updated_at = Column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

@@ -247,10 +247,12 @@ body::before {
 
 /* Data table */
 .data-table-wrapper {
-  /* overflow-x: clip contains any accidental overflow WITHOUT creating a
+  /* overflow: clip contains any accidental overflow WITHOUT creating a
      scroll container, so sticky headers keep working (auto/scroll would
-     break them). Under 1100px we switch to real scrolling instead. */
-  overflow-x: clip;
+     break them). Both axes: single-axis clip leaves the other axis
+     visible, which let the square thead corners poke past the rounded
+     border. Under 1100px we switch to real scrolling instead. */
+  overflow: clip;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-subtle);
 }

@@ -311,6 +311,46 @@ async def _run_compute_locked(settings, t0):
             purge_stmt, {"region": settings.region, "run_ts": now}
         )
 
+        # Backfill crafted_item_id by exact-name match. Blizzard's recipe API
+        # omits the crafted_item field entirely for Dragonflight+ recipes
+        # (only 5 of ~1800 modern recipes carry it), which silently excluded
+        # every modern recipe from margin computation. Recipe name == crafted
+        # item name is Blizzard's own convention; where several items share a
+        # name (quality-tier variants of the same craft), pick the variant
+        # with the most region-wide market volume — that's where you'd sell.
+        # Runs every compute: links appear as item metadata resolves.
+        await session.execute(text(
+            "UPDATE recipes SET crafted_item_source = 'api' "
+            "WHERE crafted_item_id IS NOT NULL AND crafted_item_source IS NULL"
+        ))
+        backfill_stmt = text("""
+            WITH vol AS (
+                SELECT item_id, SUM(total_quantity) AS qty
+                FROM item_realm_aggregates
+                WHERE region = :region
+                GROUP BY item_id
+            ),
+            pick AS (
+                SELECT DISTINCT ON (i.name) i.name, i.id
+                FROM items i
+                LEFT JOIN vol v ON v.item_id = i.id
+                ORDER BY i.name, COALESCE(v.qty, 0) DESC, i.id
+            )
+            UPDATE recipes r
+            SET crafted_item_id = p.id, crafted_item_source = 'name'
+            FROM pick p
+            WHERE r.crafted_item_id IS NULL
+              AND p.name = r.name
+        """)
+        backfill_result = await session.execute(
+            backfill_stmt, {"region": settings.region}
+        )
+        if backfill_result.rowcount:
+            logger.info(
+                "Crafted-item name backfill linked %d recipes",
+                backfill_result.rowcount,
+            )
+
         # Recompute craft costs (cost of reagents per recipe, region-priced).
         # Price source priority per reagent:
         #   1. region commodity median (most reagents are commodities)
@@ -380,6 +420,20 @@ async def _run_compute_locked(settings, t0):
                 JOIN craftable c ON c.item_id = a.item_id
                 WHERE a.region = :region AND a.median_buyout > 0
                 GROUP BY a.item_id
+            ),
+            flow AS (
+                -- Observed removal evidence: auctions whose time_left bucket
+                -- proves they did NOT expire (sale or cancellation). The old
+                -- churn proxy (quantity fluctuation x stock) counted relist
+                -- cycles as demand and claimed millions of gold/day on thin
+                -- gear markets where nothing actually sells.
+                SELECT f.item_id, f.connected_realm_id,
+                       SUM(f.removed_early_qty) / 7.0 AS early_qty_per_day
+                FROM auction_flow_daily f
+                JOIN craftable c ON c.item_id = f.item_id
+                WHERE f.region = :region
+                  AND f.date >= CAST(:run_ts AS date) - 7
+                GROUP BY f.item_id, f.connected_realm_id
             )
             INSERT INTO recipe_market (
                 region, crafted_item_id, connected_realm_id,
@@ -387,20 +441,32 @@ async def _run_compute_locked(settings, t0):
             )
             SELECT :region, item_id, connected_realm_id,
                    median_buyout, total_quantity, listing_count,
-                   -- est. units sold/day: hourly churn x stock, capped at one
-                   -- full stock turnover per day
-                   LEAST(COALESCE(demand_proxy_smoothed, 0) * 24, 1.0) * total_quantity,
+                   -- est. units sold/day: observed early removals, capped at
+                   -- current stock. No flow rows in the window = no observed
+                   -- movement = 0, not a guess.
+                   LEAST(COALESCE(early_qty_per_day, 0), total_quantity),
                    :run_ts
             FROM (
                 SELECT
                     a.item_id, a.connected_realm_id, a.median_buyout,
-                    a.total_quantity, a.listing_count, a.demand_proxy_smoothed,
+                    a.total_quantity, a.listing_count, fl.early_qty_per_day,
+                    -- Best realm = where gold is actually COLLECTED (price x
+                    -- observed removals), not the highest posted price. A
+                    -- bot-walled market quoting absurd prices with zero sales
+                    -- ranks below a modest realm with real movement; posted
+                    -- price only breaks ties when no realm shows movement.
                     ROW_NUMBER() OVER (
-                        PARTITION BY a.item_id ORDER BY a.median_buyout DESC
+                        PARTITION BY a.item_id
+                        ORDER BY COALESCE(fl.early_qty_per_day, 0)
+                                   * a.median_buyout DESC,
+                                 a.median_buyout DESC
                     ) as rn
                 FROM item_realm_aggregates a
                 JOIN craftable c ON c.item_id = a.item_id
                 JOIN cross_realm x ON x.item_id = a.item_id
+                LEFT JOIN flow fl
+                  ON fl.item_id = a.item_id
+                 AND fl.connected_realm_id = a.connected_realm_id
                 WHERE a.region = :region
                   AND a.median_buyout > 0
                   -- Realistic-price guards: gold-cap troll listings on dead

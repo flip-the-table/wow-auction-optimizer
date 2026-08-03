@@ -10,7 +10,6 @@ import {
     fetchCharacter,
     fetchCraftable,
     fetchRealmList,
-    formatGold,
     formatGoldCompact,
     nextRefreshLabel,
     qualityColor,
@@ -79,14 +78,13 @@ function RecipeTable({
     userRealmName?: string;
 }) {
     const router = useRouter();
-    const colCount = showUserRealm ? 7 : 6;
+    const colCount = showUserRealm ? 6 : 5;
     return (
         <div className="data-table-wrapper fade-in">
             <table className="data-table">
                 <thead>
                     <tr>
-                        <th title="The crafted item">Item</th>
-                        <th title="Recipe, profession and expansion tier">Recipe</th>
+                        <th title="The crafted item, its profession and expansion tier">Item</th>
                         <th title="Sum of reagent costs (region commodity prices, vendor prices, or cheapest realm AH)">Craft Cost</th>
                         <th title="Median buyout on the best realm with a real market (3+ listings, price within 5x the cross-realm median)">Sell (Best Realm)</th>
                         {showUserRealm && (
@@ -106,7 +104,7 @@ function RecipeTable({
                                     style={{ cursor: r.item.item_id ? 'pointer' : 'default' }}
                                 >
                                     <td>
-                                        <div className="item-cell">
+                                        <div className="item-cell" title={r.recipe_name ?? undefined}>
                                             {r.item.icon_url ? (
                                                 <img src={r.item.icon_url} alt="" className="item-icon" loading="lazy" />
                                             ) : (
@@ -121,20 +119,23 @@ function RecipeTable({
                                                         x{r.crafted_quantity}
                                                     </span>
                                                 )}
-                                                {r.item.item_subclass && (
-                                                    <div className="item-id">{r.item.item_subclass}</div>
-                                                )}
+                                                <div className="item-id">
+                                                    {[r.profession_name, r.skill_tier_name].filter(Boolean).join(' · ')
+                                                        || r.item.item_subclass}
+                                                </div>
                                             </div>
                                         </div>
                                     </td>
                                     <td>
-                                        <div style={{ fontWeight: 500 }}>{r.recipe_name ?? `Recipe #${r.recipe_id}`}</div>
-                                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                                            {[r.profession_name, r.skill_tier_name].filter(Boolean).join(' · ')}
-                                        </div>
-                                    </td>
-                                    <td>
                                         <Gold copper={r.craft_cost} />
+                                        {r.cost_basis === 'base' && (
+                                            <span
+                                                style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginLeft: 4 }}
+                                                title="Modern recipe: Blizzard's API omits quality-reagent slots, so this covers base reagents only — actual cost runs somewhat higher."
+                                            >
+                                                +mats
+                                            </span>
+                                        )}
                                         {r.reagents.length > 0 && (
                                             <button
                                                 style={{
@@ -179,9 +180,9 @@ function RecipeTable({
                                         {(r.expected_daily_gold ?? 0) > 0 && (
                                             <div
                                                 style={{ fontSize: '0.7rem', fontWeight: 400, color: 'var(--text-muted)', marginTop: 2 }}
-                                                title={`~${(r.est_sales_per_day ?? 0).toFixed(1)} sales/day estimated from stock churn on the best realm`}
+                                                title={`~${(r.est_sales_per_day ?? 0).toFixed(1)}/day removed before expiry (sold or cancelled) observed on the best realm`}
                                             >
-                                                ~{formatGoldCompact(r.expected_daily_gold ?? 0)}g/day est
+                                                ~{formatGoldCompact(r.expected_daily_gold ?? 0)}g / day est
                                             </div>
                                         )}
                                     </td>
@@ -236,6 +237,12 @@ export default function CraftPage() {
     // Off by default: the professions API currently exposes no Decor-crafting
     // recipes — the toggle is future-proofing for when Blizzard adds them.
     const [decorOnly, setDecorOnly] = useState(false);
+    // Off by default: markets with zero observed removals are lottery listings,
+    // not opportunities — surfacing them buried every real earner.
+    const [includeInactive, setIncludeInactive] = useState(false);
+    // Off by default: legacy-expansion recipes are noise unless they craft
+    // Decor (which flips regardless of expansion).
+    const [includeOldXpacs, setIncludeOldXpacs] = useState(false);
     const [profession, setProfession] = useState<number | undefined>();
     const [limit, setLimit] = useState(50);
     const [searchQuery, setSearchQuery] = useState('');
@@ -279,6 +286,10 @@ export default function CraftPage() {
                 profession,
                 search: debouncedSearch || undefined,
                 realm: userRealmId,
+                includeInactive,
+                includeOldXpacs,
+                charRealm: charData?.character.realm_slug,
+                charName: charData?.character.name,
             });
             setData(result);
         } catch (err: any) {
@@ -286,7 +297,7 @@ export default function CraftPage() {
         } finally {
             setLoading(false);
         }
-    }, [limit, decorOnly, profession, debouncedSearch, userRealmId]);
+    }, [limit, decorOnly, profession, debouncedSearch, userRealmId, includeInactive, includeOldXpacs, charData]);
 
     useEffect(() => {
         loadData();
@@ -347,11 +358,14 @@ export default function CraftPage() {
         });
     };
 
-    // Split recipes by character knowledge
-    const knownRecipes = useMemo(
-        () => (data && charData ? data.recipes.filter(r => knownRecipeIds.has(r.recipe_id)) : []),
-        [data, charData, knownRecipeIds]
-    );
+    // Known recipes come from the API when it resolved the character (queried
+    // against the FULL catalog — intersecting the top-N client-side found
+    // nothing for most characters). Fallback: client-side intersection.
+    const knownRecipes = useMemo(() => {
+        if (!data || !charData) return [];
+        if (data.known_recipes) return data.known_recipes;
+        return data.recipes.filter(r => knownRecipeIds.has(r.recipe_id));
+    }, [data, charData, knownRecipeIds]);
     const unknownRecipes = useMemo(
         () => (data && charData ? data.recipes.filter(r => !knownRecipeIds.has(r.recipe_id)) : []),
         [data, charData, knownRecipeIds]
@@ -480,6 +494,38 @@ export default function CraftPage() {
                     Decor only
                 </label>
 
+                <label
+                    title="Also show markets where no listing has been observed to sell — huge margins on paper that nobody actually collects."
+                    style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        fontSize: '0.85rem', color: 'var(--text-secondary)', cursor: 'pointer',
+                        userSelect: 'none',
+                    }}
+                >
+                    <input
+                        type="checkbox"
+                        checked={includeInactive}
+                        onChange={(e) => setIncludeInactive(e.target.checked)}
+                    />
+                    🎰 Include no-sale markets
+                </label>
+
+                <label
+                    title="Also show recipes from past expansions. Decor from any expansion is always included — flipping furniture is the whole point."
+                    style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        fontSize: '0.85rem', color: 'var(--text-secondary)', cursor: 'pointer',
+                        userSelect: 'none',
+                    }}
+                >
+                    <input
+                        type="checkbox"
+                        checked={includeOldXpacs}
+                        onChange={(e) => setIncludeOldXpacs(e.target.checked)}
+                    />
+                    🕰 Include old expansions
+                </label>
+
                 <select
                     className="filter-select"
                     value={limit}
@@ -529,7 +575,7 @@ export default function CraftPage() {
                     <table className="data-table">
                         <thead>
                             <tr>
-                                {['Item', 'Recipe', 'Craft Cost', 'Sell (Best Realm)', 'Margin', 'Verdict'].map((h) => (
+                                {['Item', 'Craft Cost', 'Sell (Best Realm)', 'Margin', 'Verdict'].map((h) => (
                                     <th key={h}>{h}</th>
                                 ))}
                             </tr>
@@ -537,7 +583,7 @@ export default function CraftPage() {
                         <tbody>
                             {Array.from({ length: 10 }).map((_, i) => (
                                 <tr key={i}>
-                                    {Array.from({ length: 6 }).map((_, j) => (
+                                    {Array.from({ length: 5 }).map((_, j) => (
                                         <td key={j}>
                                             <div className="skeleton" style={{ height: 18, width: 60 + (i % 5) * 15 }} />
                                         </td>
@@ -557,14 +603,25 @@ export default function CraftPage() {
                             <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--accent-emerald)', margin: '8px 0' }}>
                                 ✔ You can craft these now ({knownRecipes.length})
                             </h3>
-                            <RecipeTable
-                                recipes={knownRecipes}
-                                expanded={expanded}
-                                onToggleExpand={toggleExpand}
-                                emptyMessage="None of the listed recipes are known by this character. Try widening the filters."
-                                showUserRealm={userRealmId != null}
-                                userRealmName={userRealmEntry?.name}
-                            />
+                            {knownRecipes.length > 0 ? (
+                                <RecipeTable
+                                    recipes={knownRecipes}
+                                    expanded={expanded}
+                                    onToggleExpand={toggleExpand}
+                                    emptyMessage=""
+                                    showUserRealm={userRealmId != null}
+                                    userRealmName={userRealmEntry?.name}
+                                />
+                            ) : (
+                                <div
+                                    className="glass-card"
+                                    style={{ padding: '14px 18px', fontSize: '0.85rem', color: 'var(--text-muted)' }}
+                                >
+                                    {(charData.known_recipe_ids?.length ?? 0) === 0
+                                        ? `${charData.character.name} has no profession recipes on their public profile.`
+                                        : 'None of this character’s known recipes have complete pricing and a live market right now — check back after the next data refresh, or adjust the filters.'}
+                                </div>
+                            )}
                             <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--accent-gold)', margin: '20px 0 8px' }}>
                                 📈 Worth learning next ({unknownRecipes.length})
                             </h3>
@@ -585,7 +642,9 @@ export default function CraftPage() {
                             emptyMessage={
                                 decorOnly
                                     ? 'No decor-crafting recipes exist in the professions catalog yet — uncheck "Decor only" to see all craftable margins.'
-                                    : 'No craftable recipes with complete pricing found. The recipe catalog may not be ingested yet.'
+                                    : !includeOldXpacs || !includeInactive
+                                        ? 'Nothing matches the default view (current expansion, markets with observed sales). Try "🕰 Include old expansions" or "🎰 Include no-sale markets" — or check back after the next data refresh.'
+                                        : 'No craftable recipes with complete pricing found. The recipe catalog may not be ingested yet.'
                             }
                             showUserRealm={userRealmId != null}
                             userRealmName={userRealmEntry?.name}

@@ -75,3 +75,55 @@ export async function getCharacterProfessions(
     if (!res.ok) throw new Error(`Blizzard API error: ${res.status}`);
     return res.json();
 }
+
+const CHAR_CACHE_TTL = 3600; // known recipes change slowly
+
+/**
+ * Flattened character profession profile, cached in Redis. Shared by
+ * /api/character (renders it) and /api/craft (uses known_recipe_ids to
+ * query margins for recipes the character can actually craft).
+ * Returns null when the character doesn't exist or the profile is hidden.
+ */
+export async function getCharacterProfile(
+    realmSlug: string,
+    characterName: string
+): Promise<any | null> {
+    const region = process.env.REGION || 'us';
+    const cacheKey = `char:${region}:${realmSlug}:${characterName.toLowerCase()}`;
+    const cached = await cacheGet<any>(cacheKey);
+    if (cached) return cached;
+
+    const data = await getCharacterProfessions(realmSlug, characterName);
+    if (data === null) return null;
+
+    const professions: any[] = [];
+    const knownRecipeIds: number[] = [];
+    for (const group of [...(data.primaries ?? []), ...(data.secondaries ?? [])]) {
+        const prof = group.profession ?? {};
+        const tiers = (group.tiers ?? []).map((t: any) => {
+            const ids = (t.known_recipes ?? []).map((r: any) => r.id).filter((x: any) => x != null);
+            knownRecipeIds.push(...ids);
+            return {
+                tier_id: t.tier?.id ?? null,
+                tier_name: t.tier?.name ?? null,
+                skill_points: t.skill_points ?? null,
+                max_skill_points: t.max_skill_points ?? null,
+                known_recipe_count: ids.length,
+            };
+        });
+        professions.push({
+            profession_id: prof.id ?? null,
+            profession_name: prof.name ?? null,
+            tiers,
+        });
+    }
+
+    const profile = {
+        character: { name: characterName, realm_slug: realmSlug, region },
+        professions,
+        known_recipe_ids: knownRecipeIds,
+        generated_at: new Date().toISOString(),
+    };
+    await cacheSet(cacheKey, profile, CHAR_CACHE_TTL);
+    return profile;
+}

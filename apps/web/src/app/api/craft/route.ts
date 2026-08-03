@@ -1,12 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { cacheGet, cacheSet } from '@/lib/cache';
+import { getCharacterProfile } from '@/lib/blizzard';
 
 export const runtime = 'nodejs';
 
 const CACHE_TTL = 1800; // data refreshes once daily
 
 const AH_CUT = 0.05; // 5% auction house cut
+
+// Skill tiers >= this are "modified crafting" era (Dragonflight onward:
+// 2822+; legacy tiers sit at 2437-2477, Shadowlands at 2751). Blizzard's
+// recipe API omits the quality-reagent slots for these, so their craft
+// costs cover base reagents only — flagged so the UI can say so.
+const MODIFIED_CRAFTING_TIER = 2800;
 
 function intParam(value: string | null, fallback: number): number {
   const n = parseInt(value ?? '', 10);
@@ -29,6 +36,21 @@ export async function GET(request: NextRequest) {
     const userRealmRaw = intParam(searchParams.get('realm'), NaN);
     const userRealm = Number.isFinite(userRealmRaw) ? userRealmRaw : null;
     const search = searchParams.get('search') || null;
+    // Default view: only markets with observed sales evidence. active=0 also
+    // includes markets where listings never move (huge margins nobody collects).
+    const activeOnly = searchParams.get('active') !== '0';
+    // Default view: current-expansion recipes only — except Decor, which is
+    // the app's core flipping business regardless of expansion. xpac=all opts
+    // into legacy recipes. "Current" is data-derived per profession (its
+    // newest skill tier), never a hardcoded expansion name.
+    const currentOnly = searchParams.get('xpac') !== 'all';
+    // Optional character: adds a "known recipes" result set queried from the
+    // full catalog (the top-N list alone almost never intersects what one
+    // character happens to know).
+    const charRealm = (searchParams.get('charRealm') || '').toLowerCase().trim();
+    const charName = (searchParams.get('charName') || '').trim();
+    const hasChar =
+      /^[a-z0-9-]{2,64}$/.test(charRealm) && charName.length >= 2 && charName.length <= 12;
 
     let searchPattern: string | null = null;
     if (search) {
@@ -36,7 +58,8 @@ export async function GET(request: NextRequest) {
       if (sanitized.length > 0) searchPattern = `%${sanitized}%`;
     }
 
-    const cacheKey = `craft:${region}:${limit}:${decorOnly}:${profession ?? 'all'}:${userRealm ?? 'none'}:${searchPattern ?? ''}`;
+    const charKey = hasChar ? `${charRealm}:${charName.toLowerCase()}` : 'none';
+    const cacheKey = `craft:${region}:${limit}:${decorOnly}:${profession ?? 'all'}:${userRealm ?? 'none'}:${searchPattern ?? ''}:${activeOnly ? 1 : 0}:${currentOnly ? 1 : 0}:${charKey}`;
     const cached = await cacheGet<any>(cacheKey);
     if (cached) {
       return NextResponse.json(cached, {
@@ -115,8 +138,16 @@ export async function GET(request: NextRequest) {
 
     // Recipes with complete costs, joined to the best realm to sell the crafted
     // item (highest median). Margin = revenue per craft after AH cut - cost.
-    const rows = await sql`
-      WITH sellable AS (
+    // knownFilter narrows to a character's known recipes; activeFilter drops
+    // markets with no observed removals (applied to the global list only —
+    // a character's own toolkit is small enough to show in full).
+    const queryRecipes = (knownIds: number[] | null, active: boolean, rowLimit: number) => sql`
+      WITH current_tier AS (
+        -- Each profession's newest skill tier = its current expansion
+        SELECT profession_id, MAX(skill_tier_id) AS tier_id
+        FROM recipes GROUP BY profession_id
+      ),
+      sellable AS (
         SELECT DISTINCT ON (rc.crafted_item_id)
           rc.recipe_id,
           rc.crafted_item_id,
@@ -126,6 +157,7 @@ export async function GET(request: NextRequest) {
           r.name as recipe_name,
           r.profession_id,
           r.profession_name,
+          r.skill_tier_id,
           r.skill_tier_name,
           r.crafted_quantity,
           i.name as item_name,
@@ -136,10 +168,16 @@ export async function GET(request: NextRequest) {
         JOIN recipes r ON r.id = rc.recipe_id
         LEFT JOIN items i ON i.id = rc.crafted_item_id
         LEFT JOIN item_media m ON m.item_id = rc.crafted_item_id
+        ${currentOnly && !knownIds ? sql`
+        JOIN current_tier ct ON ct.profession_id = r.profession_id` : sql``}
         WHERE rc.region = ${region}
           AND rc.craft_cost IS NOT NULL
           AND rc.craft_cost > 0
           AND rc.reagents_priced = rc.reagents_total
+          ${currentOnly && !knownIds
+            ? sql`AND (r.skill_tier_id = ct.tier_id OR i.item_subclass = 'Decor')`
+            : sql``}
+          ${knownIds ? sql`AND rc.recipe_id = ANY(${knownIds})` : sql``}
           ${decorFilter}
           ${professionFilter}
           ${searchFilter}
@@ -162,6 +200,7 @@ export async function GET(request: NextRequest) {
         FROM sellable s
         JOIN recipe_market bm
           ON bm.region = ${region} AND bm.crafted_item_id = s.crafted_item_id
+          ${active ? sql`AND bm.demand_per_day >= 0.1` : sql``}
         LEFT JOIN item_realm_aggregates ua
           ON ua.region = ${region}
          AND ua.connected_realm_id = ${userRealm ?? -1}
@@ -182,11 +221,25 @@ export async function GET(request: NextRequest) {
           as expected_daily_gold
       FROM best
       ORDER BY expected_daily_gold DESC NULLS LAST, margin DESC
-      LIMIT ${limit}
+      LIMIT ${rowLimit}
     `;
 
+    // Character profile fetch and the global list are independent — overlap them
+    const [rows, charProfile] = await Promise.all([
+      queryRecipes(null, activeOnly, limit),
+      hasChar
+        ? getCharacterProfile(charRealm, charName).catch(() => null)
+        : Promise.resolve(null),
+    ]);
+
+    const knownIds: number[] = charProfile?.known_recipe_ids ?? [];
+    const knownRows =
+      knownIds.length > 0 ? await queryRecipes(knownIds, false, 200) : [];
+
     // Reagent breakdown for the returned recipes (one batch query)
-    const recipeIds = rows.map((r: any) => r.recipe_id);
+    const recipeIds = Array.from(
+      new Set([...rows, ...knownRows].map((r: any) => r.recipe_id))
+    );
     const reagentsMap = new Map<number, any[]>();
     if (recipeIds.length > 0) {
       const reagentRows = await sql`
@@ -218,7 +271,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const recipes = rows.map((row: any) => ({
+    const mapRow = (row: any) => ({
       recipe_id: row.recipe_id,
       recipe_name: row.recipe_name,
       profession_id: row.profession_id,
@@ -233,6 +286,7 @@ export async function GET(request: NextRequest) {
         item_subclass: row.item_subclass,
       },
       craft_cost: Number(row.craft_cost),
+      cost_basis: Number(row.skill_tier_id) >= MODIFIED_CRAFTING_TIER ? 'base' : 'full',
       reagents: reagentsMap.get(row.recipe_id) ?? [],
       best_realm: {
         connected_realm_id: row.connected_realm_id,
@@ -248,7 +302,10 @@ export async function GET(request: NextRequest) {
       user_margin: row.user_margin != null ? Number(row.user_margin) : null,
       est_sales_per_day: Number(row.demand_per_day ?? 0),
       expected_daily_gold: Number(row.expected_daily_gold ?? 0),
-    }));
+    });
+
+    const recipes = rows.map(mapRow);
+    const knownRecipes = knownRows.map(mapRow);
 
     // Profession list for the filter dropdown (cheap, cached with response)
     const professionRows = await sql`
@@ -259,6 +316,11 @@ export async function GET(request: NextRequest) {
 
     const responseBody = {
       recipes,
+      // Present only when a character was requested AND its profile resolved —
+      // absent means the client should fall back to client-side intersection.
+      ...(charProfile
+        ? { known_recipes: knownRecipes, known_recipe_count: knownIds.length }
+        : {}),
       professions: professionRows.map((p: any) => ({
         id: p.profession_id,
         name: p.profession_name,
