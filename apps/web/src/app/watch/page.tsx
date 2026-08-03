@@ -8,27 +8,15 @@ import {
     RealmSlugEntry,
     fetchOpportunities,
     fetchRealmList,
-    formatGold,
     nextRefreshLabel,
     qualityColor,
     timeAgo,
 } from '@/lib/api';
-import { SiteNav, AgeMixBar } from '@/components/market-widgets';
+import { SiteNav, AgeMixBar, Gold } from '@/components/market-widgets';
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const CHARACTER_STORAGE_KEY = 'ftt-character';
 
-function GoldAmount({ copper }: { copper: number | null }) {
-    if (copper == null || copper <= 0) return <span style={{ color: 'var(--text-muted)' }}>—</span>;
-    const { gold, silver, copper: cop } = formatGold(copper);
-    return (
-        <span className="gold-amount">
-            {gold > 0 && (<><span>{gold.toLocaleString()}</span><span className="coin coin-gold" /></>)}
-            {(gold > 0 || silver > 0) && (<><span>{silver}</span><span className="coin coin-silver" /></>)}
-            <span>{cop}</span><span className="coin coin-copper" />
-        </span>
-    );
-}
 
 // Where the current price sits inside its own 30-day range: a dot on a
 // green→red track. Low = unusually cheap (buy side), high = sell zone.
@@ -226,7 +214,7 @@ export default function WatchPage() {
                                         </div>
                                     </td>
                                     <td>
-                                        <GoldAmount copper={row.current_price} />
+                                        <Gold copper={row.current_price} />
                                         <AgeMixBar age={row.listing_age} />
                                     </td>
                                     <td><PricePositionGauge percentile={row.price_percentile_30d} /></td>

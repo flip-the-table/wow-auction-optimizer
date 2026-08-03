@@ -10,11 +10,10 @@ import {
     fetchDecorOpportunities,
     fetchMaterialValue,
     fetchRealmList,
-    formatGold,
     qualityColor,
     timeAgo,
 } from '@/lib/api';
-import { SiteNav } from '@/components/market-widgets';
+import { SiteNav, Gold } from '@/components/market-widgets';
 
 const CHARACTER_STORAGE_KEY = 'ftt-character';
 
@@ -24,19 +23,6 @@ const CHARACTER_STORAGE_KEY = 'ftt-character';
 // interface AssumptionOverrides { realized_price_factor?: number; ... }
 // function getOverrides(): AssumptionOverrides { return {}; }
 
-function GoldAmount({ copper }: { copper: number | null | undefined }) {
-    if (copper == null) return <span style={{ color: 'var(--text-muted)' }}>—</span>;
-    const negative = copper < 0;
-    const { gold, silver, copper: cop } = formatGold(Math.abs(copper));
-    return (
-        <span className="gold-amount" style={negative ? { color: 'var(--accent-red)' } : undefined}>
-            {negative && <span>-</span>}
-            {gold > 0 && (<><span>{gold.toLocaleString()}</span><span className="coin coin-gold" /></>)}
-            {(gold > 0 || silver > 0) && (<><span>{silver}</span><span className="coin coin-silver" /></>)}
-            <span>{cop}</span><span className="coin coin-copper" />
-        </span>
-    );
-}
 
 // Verdict chips per Phase 14.2 — never "Craft now" (recipe access is unknown)
 function ConversionVerdict({ row }: { row: DecorConversionRow }) {
@@ -102,7 +88,7 @@ function CalculationDrawer({ row }: { row: DecorConversionRow }) {
                     {line(`− AH cut (${((snap?.params?.ah_cut ?? 0) * 100).toFixed(0)}%) − deposit loss (${g(row.expected_deposit_loss)})`,
                         g(row.net_estimated_revenue), 'MODELED')}
                     {line('− other reagent costs', g(row.other_reagent_cost), 'OBSERVED_LISTING / VENDOR')}
-                    {line(`÷ material quantity (${row.material_quantity ?? '—'})`, <strong><GoldAmount copper={row.implied_value_per_material} /></strong>, 'MODELED')}
+                    {line(`÷ material quantity (${row.material_quantity ?? '—'})`, <strong><Gold copper={row.implied_value_per_material} /></strong>, 'MODELED')}
                 </tbody>
             </table>
             <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 8, fontSize: '0.72rem', color: 'var(--text-muted)' }}>
@@ -309,17 +295,17 @@ export default function LumberPage() {
                                             </div>
                                             <div style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--accent-gold)' }}>
                                                 {summary.reference_implied_value != null
-                                                    ? <><GoldAmount copper={summary.reference_implied_value} /> <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>per {summary.material?.display_name}</span></>
+                                                    ? <><Gold copper={summary.reference_implied_value} /> <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>per {summary.material?.display_name}</span></>
                                                     : <span style={{ fontSize: '1rem', color: 'var(--text-muted)' }}>unavailable — fewer than {a?.min_eligible_recipes ?? '—'} eligible recipes</span>}
                                             </div>
                                         </div>
                                         <div>
                                             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Best current conversion</div>
-                                            <div style={{ fontWeight: 700 }}><GoldAmount copper={summary.best_conversion_value} /></div>
+                                            <div style={{ fontWeight: 700 }}><Gold copper={summary.best_conversion_value} /></div>
                                         </div>
                                         <div>
                                             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Conservative (25th pct)</div>
-                                            <div style={{ fontWeight: 700 }}><GoldAmount copper={summary.conservative_implied_value} /></div>
+                                            <div style={{ fontWeight: 700 }}><Gold copper={summary.conservative_implied_value} /></div>
                                         </div>
                                         <div>
                                             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Model quality</div>
@@ -399,18 +385,18 @@ export default function LumberPage() {
                                                         {row.recipe.source_version ?? '—'}
                                                         <div className="item-id">{row.recipe.verification_status}</div>
                                                     </td>
-                                                    <td><GoldAmount copper={row.listing_median} />
+                                                    <td><Gold copper={row.listing_median} />
                                                         <div className="item-id">{row.listing_count ?? '—'} listings</div>
                                                     </td>
-                                                    <td><GoldAmount copper={row.estimated_realized_unit_price} /></td>
-                                                    <td><GoldAmount copper={row.other_reagent_cost} /></td>
+                                                    <td><Gold copper={row.estimated_realized_unit_price} /></td>
+                                                    <td><Gold copper={row.other_reagent_cost} /></td>
                                                     <td style={{ fontVariantNumeric: 'tabular-nums' }}>{row.material_quantity ?? '—'}</td>
-                                                    <td style={{ fontWeight: 700 }}><GoldAmount copper={row.implied_value_per_material} /></td>
+                                                    <td style={{ fontWeight: 700 }}><Gold copper={row.implied_value_per_material} /></td>
                                                     <td style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}
                                                         title="Churn-based estimate; cannot distinguish sales from expired or cancelled auctions">
                                                         ~{(row.estimated_market_units_per_day ?? 0).toFixed(1)}/day
                                                     </td>
-                                                    <td><GoldAmount copper={row.expected_daily_contribution} /></td>
+                                                    <td><Gold copper={row.expected_daily_contribution} /></td>
                                                     <td><ScoreBadge value={row.model_quality} label="Model quality" /></td>
                                                     <td style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                                                         {row.listing_updated_at ? timeAgo(row.listing_updated_at) : '—'}

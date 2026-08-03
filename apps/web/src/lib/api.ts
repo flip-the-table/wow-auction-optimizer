@@ -487,6 +487,15 @@ export function formatGold(copper: number | null): { gold: number; silver: numbe
     return { gold: g, silver: s, copper: c };
 }
 
+/** Compact gold string for table display: 1.23M / 234k / 12,345 (gold units) */
+export function formatGoldCompact(copper: number): string {
+    const g = copper / 10000;
+    if (g >= 1_000_000) return `${(g / 1_000_000).toFixed(2)}M`;
+    if (g >= 100_000) return `${Math.round(g / 1000)}k`;
+    if (g >= 10_000) return `${(g / 1000).toFixed(1)}k`;
+    return Math.round(g).toLocaleString();
+}
+
 /** Format a z-score with sign and 2 decimal places */
 export function formatZ(z: number | null): string {
     if (z === null || z === undefined) return '--';

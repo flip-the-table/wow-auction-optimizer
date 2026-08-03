@@ -11,39 +11,15 @@ import {
     fetchCraftable,
     fetchRealmList,
     formatGold,
+    formatGoldCompact,
     nextRefreshLabel,
     qualityColor,
     timeAgo,
 } from '@/lib/api';
-import { SiteNav } from '@/components/market-widgets';
+import { SiteNav, Gold } from '@/components/market-widgets';
 
 const CHARACTER_STORAGE_KEY = 'ftt-character';
 
-// --- Gold Amount Component ---
-function GoldAmount({ copper }: { copper: number | null }) {
-    if (copper == null) return <span style={{ color: 'var(--text-muted)' }}>--</span>;
-    const negative = copper < 0;
-    const { gold, silver, copper: cop } = formatGold(Math.abs(copper));
-    return (
-        <span className="gold-amount" style={negative ? { color: 'var(--accent-red)' } : undefined}>
-            {negative && <span>-</span>}
-            {gold > 0 && (
-                <>
-                    <span>{gold.toLocaleString()}</span>
-                    <span className="coin coin-gold" />
-                </>
-            )}
-            {(gold > 0 || silver > 0) && (
-                <>
-                    <span>{silver}</span>
-                    <span className="coin coin-silver" />
-                </>
-            )}
-            <span>{cop}</span>
-            <span className="coin coin-copper" />
-        </span>
-    );
-}
 
 // --- Verdict chip: turn margin stats into a plain-language recommendation ---
 function CraftVerdict({ r, useUserRealm }: { r: CraftRecipe; useUserRealm: boolean }) {
@@ -64,12 +40,12 @@ function CraftVerdict({ r, useUserRealm }: { r: CraftRecipe; useUserRealm: boole
         );
     }
     const where = useUserRealm && r.user_margin != null ? 'on your realm' : 'on the best realm';
-    const pctText = `${pct >= 0 ? '+' : ''}${(pct * 100).toFixed(0)}%`;
+    const pctText = pct >= 9.995 ? '+999%+' : `${pct >= 0 ? '+' : ''}${(pct * 100).toFixed(0)}%`;
     let label: string, cls: string, title: string;
     if (pct >= 0.5) {
         label = `🔥 Craft now ${pctText}`;
         cls = 'positive';
-        title = `High margin: each craft returns ${pctText} over material cost ${where}.`;
+        title = `High margin: each craft returns ${(pct * 100).toFixed(0)}% over material cost ${where}.`;
     } else if (pct >= 0.15) {
         label = `✅ Profitable ${pctText}`;
         cls = 'positive';
@@ -158,7 +134,7 @@ function RecipeTable({
                                         </div>
                                     </td>
                                     <td>
-                                        <GoldAmount copper={r.craft_cost} />
+                                        <Gold copper={r.craft_cost} />
                                         {r.reagents.length > 0 && (
                                             <button
                                                 style={{
@@ -176,7 +152,7 @@ function RecipeTable({
                                         )}
                                     </td>
                                     <td>
-                                        <GoldAmount copper={r.best_realm.sell_price} />
+                                        <Gold copper={r.best_realm.sell_price} />
                                         <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>
                                             {r.best_realm.realm_name ?? `Realm ${r.best_realm.connected_realm_id}`}
                                             {' · '}{r.best_realm.market_quantity} listed
@@ -186,9 +162,9 @@ function RecipeTable({
                                         <td>
                                             {r.user_sell_price != null ? (
                                                 <>
-                                                    <GoldAmount copper={r.user_sell_price} />
+                                                    <Gold copper={r.user_sell_price} />
                                                     <div style={{ fontSize: '0.72rem', marginTop: 2, color: (r.user_margin ?? 0) > 0 ? 'var(--accent-emerald)' : 'var(--accent-red)' }}>
-                                                        margin: <GoldAmount copper={r.user_margin ?? null} />
+                                                        margin: <Gold copper={r.user_margin ?? null} />
                                                     </div>
                                                 </>
                                             ) : (
@@ -199,13 +175,13 @@ function RecipeTable({
                                         </td>
                                     )}
                                     <td style={{ fontWeight: 700 }}>
-                                        <GoldAmount copper={r.margin} />
+                                        <Gold copper={r.margin} />
                                         {(r.expected_daily_gold ?? 0) > 0 && (
                                             <div
                                                 style={{ fontSize: '0.7rem', fontWeight: 400, color: 'var(--text-muted)', marginTop: 2 }}
                                                 title={`~${(r.est_sales_per_day ?? 0).toFixed(1)} sales/day estimated from stock churn on the best realm`}
                                             >
-                                                ~{Math.round((r.expected_daily_gold ?? 0) / 10000).toLocaleString()}g/day est
+                                                ~{formatGoldCompact(r.expected_daily_gold ?? 0)}g/day est
                                             </div>
                                         )}
                                     </td>
@@ -225,7 +201,7 @@ function RecipeTable({
                                                             </td>
                                                             <td style={{ padding: '2px 0' }}>
                                                                 {rg.unit_price != null
-                                                                    ? <GoldAmount copper={rg.unit_price * rg.quantity} />
+                                                                    ? <Gold copper={rg.unit_price * rg.quantity} />
                                                                     : <span style={{ color: 'var(--accent-red)' }}>no price</span>}
                                                             </td>
                                                         </tr>

@@ -10,38 +10,14 @@ import {
     fetchHotItems,
     fetchRealmList,
     fetchRealms,
-    formatGold,
     formatZ,
     formatPct,
     nextRefreshLabel,
     qualityColor,
     timeAgo,
 } from '@/lib/api';
-import { SiteNav, AgeMixBar } from '@/components/market-widgets';
+import { SiteNav, AgeMixBar, Gold } from '@/components/market-widgets';
 
-// --- Gold Amount Component ---
-function GoldAmount({ copper }: { copper: number | null }) {
-    if (!copper || copper <= 0) return <span className="text-muted">--</span>;
-    const { gold, silver, copper: cop } = formatGold(copper);
-    return (
-        <span className="gold-amount">
-            {gold > 0 && (
-                <>
-                    <span>{gold.toLocaleString()}</span>
-                    <span className="coin coin-gold" />
-                </>
-            )}
-            {(gold > 0 || silver > 0) && (
-                <>
-                    <span>{silver}</span>
-                    <span className="coin coin-silver" />
-                </>
-            )}
-            <span>{cop}</span>
-            <span className="coin coin-copper" />
-        </span>
-    );
-}
 
 // --- Stat Badge Component ---
 function StatBadge({ value, formatter }: { value: number | null; formatter: (v: number | null) => string }) {
@@ -313,9 +289,9 @@ function HomePageInner() {
             <SiteNav />
             {/* Header */}
             <div className="page-header">
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                    <img src="/tableflip.gif" alt="Table flip!" style={{ height: '14.4rem', borderRadius: '4px' }} />
-                    <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <div className="radar-hero">
+                    <img src="/tableflip.gif" alt="Table flip!" className="radar-hero-gif" />
+                    <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 0 }}>
                         <h1
                             className={`page-title ${introState === 'pending' ? 'title-hidden' : introState === 'spin' ? 'title-spin-in' : ''}`}
                         >
@@ -607,7 +583,7 @@ function HomePageInner() {
 
                                                 {/* Price */}
                                                 <td>
-                                                    <GoldAmount copper={item.current_price} />
+                                                    <Gold copper={item.current_price} />
                                                 </td>
 
                                                 {/* Quantity + listing-age mix */}
@@ -674,7 +650,7 @@ function HomePageInner() {
                                                         {alt.realm_name ?? `Realm ${alt.connected_realm_id}`}
                                                     </td>
                                                     <td>
-                                                        <GoldAmount copper={alt.current_price} />
+                                                        <Gold copper={alt.current_price} />
                                                     </td>
                                                     <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
                                                         {alt.total_quantity != null ? alt.total_quantity.toLocaleString() : '—'}

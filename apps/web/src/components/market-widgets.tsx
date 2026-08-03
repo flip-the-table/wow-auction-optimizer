@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
-import { TokenResponse, fetchToken } from '@/lib/api';
+import { TokenResponse, fetchToken, formatGold, formatGoldCompact } from '@/lib/api';
 
 // --- WoW Token chip: converts everything on the page into "sub money" ------
 export function TokenChip() {
@@ -73,6 +73,10 @@ export function SiteNav() {
     const pathname = usePathname() ?? '/';
     return (
         <nav className="site-nav" aria-label="Primary">
+            <a href="/" className="nav-brand" title="Flip the Table — WoW decor market intelligence">
+                <span aria-hidden>🪑</span>
+                <span className="nav-brand-text">Flip the Table</span>
+            </a>
             {NAV_TABS.map(t => {
                 const active = t.href === '/' ? pathname === '/' : pathname.startsWith(t.href);
                 return (
@@ -86,5 +90,36 @@ export function SiteNav() {
             })}
             <span style={{ marginLeft: 'auto' }}><TokenChip /></span>
         </nav>
+    );
+}
+
+
+// --- Shared gold display -----------------------------------------------------
+// >= 1,000g: compact number + single gold coin (keeps table columns narrow;
+// full value in the tooltip). Below that: classic gold/silver/copper coins.
+export function Gold({ copper }: { copper: number | null | undefined }) {
+    if (copper == null) return <span style={{ color: 'var(--text-muted)' }}>—</span>;
+    const negative = copper < 0;
+    const abs = Math.abs(copper);
+    const g = abs / 10000;
+    const style = negative ? { color: 'var(--accent-red)' } : undefined;
+    if (g >= 1000) {
+        return (
+            <span className="gold-amount" style={style}
+                title={`${negative ? '-' : ''}${Math.floor(g).toLocaleString()}g exactly`}>
+                {negative && <span>-</span>}
+                <span>{formatGoldCompact(abs)}</span>
+                <span className="coin coin-gold" />
+            </span>
+        );
+    }
+    const { gold, silver, copper: cop } = formatGold(abs);
+    return (
+        <span className="gold-amount" style={style}>
+            {negative && <span>-</span>}
+            {gold > 0 && (<><span>{gold.toLocaleString()}</span><span className="coin coin-gold" /></>)}
+            {(gold > 0 || silver > 0) && (<><span>{silver}</span><span className="coin coin-silver" /></>)}
+            <span>{cop}</span><span className="coin coin-copper" />
+        </span>
     );
 }

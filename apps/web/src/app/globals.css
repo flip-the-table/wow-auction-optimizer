@@ -223,13 +223,7 @@ body::before {
   gap: 12px;
   align-items: center;
   flex-wrap: wrap;
-  padding: 16px 0;
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  /* Must be opaque — an undefined var here previously left the bar transparent,
-     so table rows visibly scrolled through it */
-  background: var(--bg-primary);
+  padding: 14px 0;
 }
 
 .filter-select,
@@ -253,22 +247,12 @@ body::before {
 
 /* Data table */
 .data-table-wrapper {
-  /* No overflow clipping on wide screens: position:sticky cannot stick to the
-     viewport from inside an overflow container, which silently disabled the
-     sticky header. Horizontal scrolling is re-enabled under 1100px below. */
+  /* overflow-x: clip contains any accidental overflow WITHOUT creating a
+     scroll container, so sticky headers keep working (auto/scroll would
+     break them). Under 1100px we switch to real scrolling instead. */
+  overflow-x: clip;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-subtle);
-}
-
-@media (max-width: 1100px) {
-  .data-table-wrapper {
-    overflow-x: auto;
-  }
-
-  /* Inside a scroll container the sticky header can't work — disable it */
-  .data-table thead {
-    position: static;
-  }
 }
 
 .data-table {
@@ -279,9 +263,22 @@ body::before {
 
 .data-table thead {
   position: sticky;
-  top: 68px;
-  /* matches single-row filter bar height (16px padding × 2 + ~36px controls) */
+  top: 49px; /* sits flush under the sticky nav bar */
   z-index: 90;
+}
+
+/* Must come AFTER the base sticky rule above — same specificity, so source
+   order decides which wins inside the media query. */
+@media (max-width: 1100px) {
+  .data-table-wrapper {
+    overflow-x: auto;
+  }
+
+  /* Inside a scroll container sticky would pin 49px below the wrapper's own
+     top edge (rows peek above the header) — disable it */
+  .data-table thead {
+    position: static;
+  }
 }
 
 .data-table th {
@@ -409,6 +406,32 @@ body::before {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 8px;
+}
+
+/* Radar hero — GIF beside the title on desktop, stacked and shrunk on mobile */
+.radar-hero {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.radar-hero-gif {
+  height: 14.4rem;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 768px) {
+  .radar-hero {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .radar-hero-gif {
+    height: 7rem;
+  }
 }
 
 .page-title {
@@ -750,13 +773,55 @@ button:hover {
   width: 0;
   margin-left: 0;
 }
-/* Unified site navigation */
+/* Unified site navigation — persistent branded glass app bar */
 .site-nav {
   display: flex;
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
-  padding: 10px 0 4px;
+  position: sticky;
+  top: 0;
+  z-index: 120;
+  margin: 0 -20px 6px;
+  padding: 10px 20px;
+  background: rgba(10, 14, 23, 0.88);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.nav-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-right: 10px;
+  text-decoration: none;
+  font-weight: 800;
+  font-size: 0.95rem;
+  background: linear-gradient(135deg, var(--accent-gold), var(--accent-orange));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.nav-brand span[aria-hidden] {
+  -webkit-text-fill-color: initial;
+  filter: drop-shadow(0 0 4px rgba(245, 166, 35, 0.35));
+}
+
+@media (max-width: 700px) {
+  .nav-brand-text {
+    display: none;
+  }
+}
+
+/* Match the tighter mobile page-container padding so the full-bleed bar
+   doesn't overhang the viewport (page padding drops to 12px at 768px) */
+@media (max-width: 768px) {
+  .site-nav {
+    margin: 0 -12px 6px;
+    padding: 8px 12px;
+  }
 }
 
 .site-tab {
