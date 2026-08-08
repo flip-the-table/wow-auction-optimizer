@@ -170,10 +170,33 @@ export default function ItemDetailPage({ params }: { params: { id: string } }) {
     }
 
     const item = data.item;
+    // Aggregates outlive delistings — flag markets nobody has listed in >24h
+    const lastSeenMs = data.last_seen ? Date.parse(data.last_seen) : null;
+    const isStaleMarket = lastSeenMs != null && Date.now() - lastSeenMs > 24 * 3600 * 1000;
 
     return (
         <div className="page-container">
             <SiteNav />
+            {isStaleMarket && (
+                <div
+                    className="fade-in"
+                    style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        background: 'rgba(245, 166, 35, 0.08)',
+                        border: '1px solid rgba(245, 166, 35, 0.35)',
+                        borderRadius: 'var(--radius-md)',
+                        padding: '10px 16px', marginBottom: 14,
+                        fontSize: '0.85rem', color: 'var(--text-secondary)',
+                    }}
+                >
+                    <span aria-hidden>👻</span>
+                    <span>
+                        <strong style={{ color: 'var(--accent-gold)' }}>Not currently listed.</strong>{' '}
+                        Last seen on the Auction House {timeAgo(data.last_seen!)} — prices below are the
+                        last observed listings, not a live market.
+                    </span>
+                </div>
+            )}
 
             {/* Item Header */}
             <div

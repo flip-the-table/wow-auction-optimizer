@@ -199,7 +199,11 @@ export async function GET(
           FILTER (WHERE a.listing_count >= 3))::bigint as median_price,
         SUM(a.total_quantity)::int as total_available,
         (MIN(a.median_buyout) FILTER (WHERE a.listing_count >= 3))::bigint as min_price,
-        (MAX(a.median_buyout) FILTER (WHERE a.listing_count >= 3))::bigint as max_price
+        (MAX(a.median_buyout) FILTER (WHERE a.listing_count >= 3))::bigint as max_price,
+        -- Aggregates persist after an item stops being listed; last_seen lets
+        -- the UI say "not currently listed" instead of passing off a frozen
+        -- market as live (a 5-month-dead item once read as current data).
+        MAX(a.updated_at) as last_seen
       FROM item_realm_aggregates a
       WHERE a.item_id = ${itemId} AND a.region = ${region}
     `,
@@ -279,6 +283,7 @@ export async function GET(
       time_series: timeSeries,
       daily_time_series: dailyTimeSeries,
       base_stats: baseStats,
+      last_seen: allRealmStats[0]?.last_seen ?? null,
       baseline_window_days: days,
       generated_at: new Date().toISOString(),
     };

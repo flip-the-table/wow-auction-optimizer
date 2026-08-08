@@ -126,6 +126,9 @@ export interface TimeSeriesPoint {
 
 export interface ItemDetailResponse {
     item: ItemInfo;
+    /** When this item was last observed in any auction feed — old value =
+     *  the "market" below is a frozen snapshot, not live listings. */
+    last_seen?: string | null;
     realm_leaderboard: RealmRecommendation[];
     time_series: TimeSeriesPoint[];
     daily_time_series: {
