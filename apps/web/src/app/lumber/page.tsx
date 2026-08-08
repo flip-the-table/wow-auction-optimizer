@@ -219,8 +219,21 @@ export default function LumberPage() {
                 <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>Loading…</div>
             )}
             {bootStatus === 'disabled' && (
-                <div className="glass-card" style={{ padding: 24, color: 'var(--text-secondary)' }}>
-                    The implied lumber valuation feature is currently disabled.
+                <div className="glass-card fade-in" style={{ padding: '28px 32px', color: 'var(--text-secondary)', maxWidth: 760 }}>
+                    <div style={{ fontSize: '2rem', marginBottom: 8 }} aria-hidden>🪵</div>
+                    <h3 style={{ color: 'var(--accent-gold)', margin: '0 0 8px', fontSize: '1.05rem' }}>
+                        Dormant — awaiting verified recipe data
+                    </h3>
+                    <p style={{ fontSize: '0.9rem', margin: '0 0 14px', lineHeight: 1.55 }}>
+                        Lumber has no Auction House listings, so it has no market price. This engine will
+                        infer what a stack of lumber is <em>worth</em> from the decor you can craft with it:
+                        decor sale prices, minus other reagent costs, discounted for realized-sale odds.
+                    </p>
+                    <ol style={{ fontSize: '0.84rem', margin: 0, paddingLeft: 20, lineHeight: 1.7, color: 'var(--text-muted)' }}>
+                        <li>Capture decor recipes in-game with the FlipTheTableCapture addon (dual-capture verification)</li>
+                        <li>Import the verified mapping — never scraped, never guessed</li>
+                        <li>Implied values appear here automatically after the next data refresh</li>
+                    </ol>
                 </div>
             )}
             {bootStatus === 'no_mapping' && (

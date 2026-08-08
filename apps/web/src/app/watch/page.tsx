@@ -133,11 +133,12 @@ export default function WatchPage() {
                         Decor markets trading below their own 30-day range, squeezing on supply, or
                         entering their weekly sell window &mdash; computed from each item&rsquo;s own listing history.
                     </p>
-                    {data?.generated_at && (
-                        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                            Updated {timeAgo(data.generated_at)} &middot; Next data ~{nextRefreshLabel()}
-                        </span>
-                    )}
+                    {/* Always rendered — popping in after fetch shifted the whole page (CLS) */}
+                    <span style={{ display: 'block', minHeight: '1.2em', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                        {data?.generated_at
+                            ? <>Updated {timeAgo(data.generated_at)} &middot; Next data ~{nextRefreshLabel()}</>
+                            : ' '}
+                    </span>
                 </div>
             </div>
 

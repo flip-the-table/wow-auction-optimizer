@@ -386,11 +386,12 @@ export default function CraftPage() {
                     <p className="page-subtitle" style={{ margin: '4px 0 0' }}>
                         Cost to craft (region reagent prices) vs best realm to sell &mdash; after 5% AH cut.
                     </p>
-                    {data && (
-                        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                            {data.region.toUpperCase()} &middot; {data.total_count} recipes &middot; Updated {timeAgo(data.generated_at)} &middot; Next data ~{nextRefreshLabel()}
-                        </span>
-                    )}
+                    {/* Always rendered — popping in after fetch shifted the whole page (CLS) */}
+                    <span style={{ display: 'block', minHeight: '1.2em', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                        {data
+                            ? <>{data.region.toUpperCase()} &middot; {data.total_count} recipes &middot; Updated {timeAgo(data.generated_at)} &middot; Next data ~{nextRefreshLabel()}</>
+                            : ' '}
+                    </span>
                 </div>
             </div>
 

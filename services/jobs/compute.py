@@ -179,11 +179,17 @@ async def _run_compute_locked(settings, t0):
             await session.execute(text(ka))
         # Load aggregates for the region, filtering illiquid rows in SQL.
         # (Filtering in Python previously loaded ~1.5M ORM rows to keep ~1k.)
+        # Freshness gate: aggregates persist after an item stops being listed
+        # (only ingest touches updated_at), so without this cutoff a delisted
+        # item's frozen row kept producing "fresh" features every run — a
+        # 5-months-dead item sat at radar #1 showing "updated 7m ago".
+        fresh_cutoff = now - timedelta(hours=24)
         stmt = (
             select(ItemRealmAggregate)
             .where(ItemRealmAggregate.region == settings.region)
             .where(ItemRealmAggregate.listing_count >= settings.min_listing_count)
             .where(ItemRealmAggregate.total_quantity >= settings.min_total_quantity)
+            .where(ItemRealmAggregate.updated_at > fresh_cutoff)
         )
         result = await session.execute(stmt)
         aggregates = result.scalars().all()

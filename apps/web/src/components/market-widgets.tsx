@@ -10,7 +10,19 @@ export function TokenChip() {
     useEffect(() => {
         fetchToken().then(setToken).catch(() => { });
     }, []);
-    if (!token || token.status !== 'ok' || !token.gold) return null;
+    // Reserve the chip's space while the price loads — the pop-in was the
+    // largest layout shift on every page (CLS 0.08 on wide tables).
+    if (!token) {
+        return (
+            <span className="token-chip" style={{ visibility: 'hidden' }} aria-hidden>
+                <span className="token-coin">🪙</span>
+                <span>US Token 000,000g</span>
+                <span style={{ fontSize: '0.72rem' }}> ▲0.0% 7d</span>
+                <span className="token-updated">· 00m ago</span>
+            </span>
+        );
+    }
+    if (token.status !== 'ok' || !token.gold) return null;
     const delta = token.change_7d_pct;
     const deltaText = delta != null
         ? ` ${delta >= 0 ? '▲' : '▼'}${Math.abs(delta * 100).toFixed(1)}% 7d`

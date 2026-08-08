@@ -6,7 +6,6 @@ import {
     RealmEntry,
     fetchItemDetail,
     fetchRealms,
-    formatGold,
     formatZ,
     formatPct,
     qualityColor,
@@ -27,30 +26,7 @@ import {
     LineChart,
     Line,
 } from 'recharts';
-
-// --- Gold Amount Component ---
-function GoldAmount({ copper }: { copper: number | null }) {
-    if (!copper || copper <= 0) return <span style={{ color: 'var(--text-muted)' }}>--</span>;
-    const { gold, silver, copper: cop } = formatGold(copper);
-    return (
-        <span className="gold-amount">
-            {gold > 0 && (
-                <>
-                    <span>{gold.toLocaleString()}</span>
-                    <span className="coin coin-gold" />
-                </>
-            )}
-            {(gold > 0 || silver > 0) && (
-                <>
-                    <span>{silver}</span>
-                    <span className="coin coin-silver" />
-                </>
-            )}
-            <span>{cop}</span>
-            <span className="coin coin-copper" />
-        </span>
-    );
-}
+import { SiteNav, Gold } from '@/components/market-widgets';
 
 // --- Sparkline Tooltip ---
 function SparklineTooltip({ active, payload, label, valueKey, format }: any) {
@@ -68,7 +44,7 @@ function SparklineTooltip({ active, payload, label, valueKey, format }: any) {
         >
             <div style={{ color: 'var(--text-muted)', marginBottom: 4 }}>{label}</div>
             <div style={{ fontWeight: 600 }}>
-                {format === 'gold' ? <GoldAmount copper={value} /> : value?.toFixed(4)}
+                {format === 'gold' ? <Gold copper={value} /> : value?.toFixed(4)}
             </div>
         </div>
     );
@@ -171,6 +147,7 @@ export default function ItemDetailPage({ params }: { params: { id: string } }) {
     if (loading) {
         return (
             <div className="page-container">
+                <SiteNav />
                 <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
                     Loading item details...
                 </div>
@@ -181,6 +158,7 @@ export default function ItemDetailPage({ params }: { params: { id: string } }) {
     if (error || !data) {
         return (
             <div className="page-container">
+                <SiteNav />
                 <div style={{ padding: 40, textAlign: 'center', color: 'var(--accent-red)' }}>
                     {error || 'Item not found'}
                 </div>
@@ -195,21 +173,7 @@ export default function ItemDetailPage({ params }: { params: { id: string } }) {
 
     return (
         <div className="page-container">
-            {/* Back link */}
-            <a
-                href="/"
-                style={{
-                    color: 'var(--accent-gold)',
-                    textDecoration: 'none',
-                    fontSize: '0.85rem',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 4,
-                    marginBottom: 16,
-                }}
-            >
-                ← Back to Hot Items Radar
-            </a>
+            <SiteNav />
 
             {/* Item Header */}
             <div
@@ -469,7 +433,7 @@ export default function ItemDetailPage({ params }: { params: { id: string } }) {
                         </ResponsiveContainer>
                     ) : (
                         <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '0 16px' }}>
-                            Trend data requires 2+ days of ingestion.<br />Check back tomorrow!
+                            No daily history in this window &mdash; this item may not have been listed recently on the selected scope.
                         </div>
                     )}
                 </div>
@@ -498,7 +462,7 @@ export default function ItemDetailPage({ params }: { params: { id: string } }) {
                     </ResponsiveContainer>
                 ) : (
                     <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '0 16px' }}>
-                        Trend data requires 2+ days of ingestion.<br />Check back tomorrow!
+                        No daily history in this window &mdash; this item may not have been listed recently on the selected scope.
                     </div>
                 )}
             </div>
@@ -562,7 +526,7 @@ export default function ItemDetailPage({ params }: { params: { id: string } }) {
                                                 )}
                                             </td>
                                             <td>
-                                                <GoldAmount copper={r.current_price} />
+                                                <Gold copper={r.current_price} />
                                             </td>
                                             <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
                                                 {r.total_quantity != null ? r.total_quantity.toLocaleString() : '—'}
@@ -629,7 +593,7 @@ export default function ItemDetailPage({ params }: { params: { id: string } }) {
                                                 )}
                                             </td>
                                             <td>
-                                                <GoldAmount copper={r.current_price} />
+                                                <Gold copper={r.current_price} />
                                             </td>
                                             <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
                                                 {r.total_quantity != null ? r.total_quantity.toLocaleString() : '—'}
