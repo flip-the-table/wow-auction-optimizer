@@ -674,6 +674,72 @@ async def _run_compute_locked(settings, t0):
             except Exception:
                 pass
 
+        # --- Weekday rhythm profiles (Almanac) ---------------------------
+        # Which day of the week each item tends to peak (sell) and trough
+        # (buy), from the full daily-history retention (90d). Region-level:
+        # realm medians average per (item, date) first, then normalize to
+        # the item's own weekly average so realms with different price
+        # levels don't distort the rhythm.
+        try:
+            weekday_stmt = text("""
+                WITH day_price AS (
+                    SELECT d.item_id, d.date,
+                           AVG(d.median_price) AS day_price,
+                           AVG(d.demand_proxy) AS day_demand
+                    FROM item_realm_daily d
+                    WHERE d.region = :region
+                      AND d.median_price > 0
+                    GROUP BY d.item_id, d.date
+                ),
+                dow_agg AS (
+                    SELECT item_id,
+                           EXTRACT(DOW FROM date)::int AS dow,
+                           AVG(day_price) AS p,
+                           AVG(day_demand) AS dm,
+                           COUNT(*) AS n
+                    FROM day_price
+                    GROUP BY 1, 2
+                ),
+                norm AS (
+                    SELECT item_id, dow, n,
+                           p / NULLIF(AVG(p) OVER (PARTITION BY item_id), 0)
+                             AS rel_price,
+                           CASE WHEN AVG(dm) OVER (PARTITION BY item_id) > 0
+                                THEN dm / AVG(dm) OVER (PARTITION BY item_id)
+                           END AS rel_demand
+                    FROM dow_agg
+                )
+                INSERT INTO item_weekday_profile (
+                    region, item_id, dow, rel_price, rel_demand, obs_days, updated_at
+                )
+                SELECT :region, item_id, dow, rel_price, rel_demand, n, :run_ts
+                FROM norm
+                WHERE rel_price IS NOT NULL
+                ON CONFLICT (region, item_id, dow) DO UPDATE SET
+                    rel_price = EXCLUDED.rel_price,
+                    rel_demand = EXCLUDED.rel_demand,
+                    obs_days = EXCLUDED.obs_days,
+                    updated_at = EXCLUDED.updated_at
+            """)
+            wk_result = await session.execute(
+                weekday_stmt, {"region": settings.region, "run_ts": now}
+            )
+            await session.execute(
+                text("DELETE FROM item_weekday_profile "
+                     "WHERE region = :region AND updated_at < :run_ts"),
+                {"region": settings.region, "run_ts": now},
+            )
+            await session.commit()
+            logger.info(
+                "Weekday profiles refreshed: %d item-dow rows", wk_result.rowcount
+            )
+        except Exception as e:
+            logger.warning("Weekday profiles failed (non-fatal): %s", e)
+            try:
+                await session.rollback()
+            except Exception:
+                pass
+
 
     # Implied constrained-material ("lumber") valuations — precomputed here so
     # API requests never scan item_realm_aggregates. Skips cleanly when no

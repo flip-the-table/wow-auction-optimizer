@@ -41,6 +41,9 @@
   --radius-lg: 16px;
 
   --font-sans: var(--font-inter, 'Inter'), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  /* Ledger voice: a soft old-style serif for titles and the brand only
+     (--font-display is injected by next/font on <html>) */
+  --font-serif: var(--font-display, Georgia), Georgia, 'Times New Roman', serif;
 }
 
 * {
@@ -64,7 +67,8 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Animated gradient background */
+/* Ambient ground: hearth glow from the top, cool depth below — the room
+   the ledger sits in */
 body::before {
   content: '';
   position: fixed;
@@ -73,11 +77,23 @@ body::before {
   right: 0;
   bottom: 0;
   background:
-    radial-gradient(ellipse at 20% 20%, rgba(124, 58, 237, 0.08) 0%, transparent 50%),
-    radial-gradient(ellipse at 80% 80%, rgba(245, 166, 35, 0.06) 0%, transparent 50%),
-    radial-gradient(ellipse at 50% 50%, rgba(59, 130, 246, 0.04) 0%, transparent 60%);
+    radial-gradient(ellipse 70% 45% at 50% -5%, rgba(245, 166, 35, 0.09) 0%, transparent 65%),
+    radial-gradient(ellipse at 15% 85%, rgba(124, 58, 237, 0.05) 0%, transparent 50%),
+    radial-gradient(ellipse at 85% 75%, rgba(59, 130, 246, 0.05) 0%, transparent 55%);
   pointer-events: none;
   z-index: 0;
+}
+
+/* Paper grain: a near-subliminal film over everything — the ledger's tooth.
+   Pointer-transparent; imperceptible as texture, felt as warmth. */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0.022;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 #__next {
@@ -444,8 +460,10 @@ body::before {
 }
 
 .page-title {
-  font-size: 1.8rem;
-  font-weight: 800;
+  font-family: var(--font-serif);
+  font-size: 1.9rem;
+  font-weight: 700;
+  letter-spacing: 0.005em;
   background: linear-gradient(135deg, var(--accent-gold), var(--accent-orange));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -811,8 +829,9 @@ button:hover {
   gap: 7px;
   margin-right: 10px;
   text-decoration: none;
-  font-weight: 800;
-  font-size: 0.95rem;
+  font-family: var(--font-serif);
+  font-weight: 700;
+  font-size: 1.02rem;
   background: linear-gradient(135deg, var(--accent-gold), var(--accent-orange));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -869,6 +888,242 @@ button:hover {
 .site-tab .tab-icon {
   font-size: 0.95rem;
   line-height: 1;
+}
+
+/* ==========================================================================
+   The Almanac — weekly market rhythm
+   Diverging palette validated for CVD on the dark surface:
+   harvest amber #c07d0a (above weekly norm) / planting blue #3b82f6 (below).
+   Meaning never rides on color alone: 🌾/🌱 badges + text chips carry it.
+   ========================================================================== */
+:root {
+  --alm-harvest: #c07d0a;
+  --alm-plant: #3b82f6;
+  --alm-neutral: #3a4358;
+}
+
+.almanac-week {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8px;
+}
+
+.almanac-day {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 10px 6px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: help;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.almanac-day:hover {
+  border-color: rgba(245, 166, 35, 0.35);
+  transform: translateY(-1px);
+}
+
+.almanac-day.today {
+  border-color: rgba(245, 166, 35, 0.55);
+  box-shadow: 0 0 14px rgba(245, 166, 35, 0.12);
+}
+
+.alm-day-name {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.almanac-day.today .alm-day-name {
+  color: var(--accent-gold);
+}
+
+.alm-bar-wrap {
+  position: relative;
+  width: 100%;
+  height: 56px;
+}
+
+.alm-midline {
+  position: absolute;
+  top: 50%;
+  left: 12%;
+  right: 12%;
+  height: 1px;
+  background: var(--border-subtle);
+}
+
+.alm-bar {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 14px;
+  border-radius: 4px;
+}
+
+.alm-bar.up { background: var(--alm-harvest); }
+.alm-bar.down { background: var(--alm-plant); }
+
+.alm-dev {
+  font-size: 0.78rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.alm-dev.up { color: #d99a2b; }   /* text-weight step of the harvest hue */
+.alm-dev.down { color: #6ea8fe; } /* text-weight step of the planting hue */
+
+.alm-badge {
+  font-size: 0.66rem;
+  color: var(--text-muted);
+  min-height: 1em;
+  letter-spacing: 0.02em;
+}
+
+/* Today's plan — two action cards */
+.almanac-plan {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.plan-card { padding: 16px 18px; }
+
+.plan-title {
+  margin: 0 0 2px;
+  font-family: var(--font-serif);
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.plan-title.harvest { color: #d99a2b; }
+.plan-title.plant { color: #6ea8fe; }
+
+.plan-sub {
+  margin: 0 0 10px;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+
+.plan-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  margin: 0 -8px;
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  transition: background 0.15s ease;
+}
+
+.plan-row:hover { background: rgba(255, 255, 255, 0.04); }
+
+.plan-row .item-icon { width: 26px; height: 26px; }
+
+.plan-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 40%;
+}
+
+.plan-meta {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  margin-left: auto;
+  white-space: nowrap;
+  /* Shrinkable in the flex row — ellipsize instead of pushing the page wide */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.almanac-plan > .plan-card {
+  min-width: 0; /* grid children otherwise refuse to shrink below content */
+}
+
+.plan-uplift {
+  font-size: 0.76rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.plan-uplift.up { color: #d99a2b; }
+.plan-uplift.down { color: #6ea8fe; }
+
+.plan-empty {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin: 8px 0 2px;
+}
+
+/* Per-item 7-bar weekly rhythm spark */
+.rhythm {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 26px;
+}
+
+.rhythm-bar {
+  width: 9px;
+  border-radius: 3px 3px 0 0;
+  background: var(--alm-neutral);
+  min-height: 3px;
+}
+
+.rhythm-bar.sell { background: var(--alm-harvest); }
+.rhythm-bar.buy { background: var(--alm-plant); }
+
+.rhythm-bar.today {
+  outline: 1.5px solid rgba(245, 166, 35, 0.7);
+  outline-offset: 1px;
+}
+
+/* Buy/Sell day chips */
+.day-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: help;
+}
+
+.day-chip.buy {
+  color: #6ea8fe;
+  background: rgba(59, 130, 246, 0.10);
+  border: 1px solid rgba(59, 130, 246, 0.30);
+}
+
+.day-chip.sell {
+  color: #d99a2b;
+  background: rgba(192, 125, 10, 0.12);
+  border: 1px solid rgba(192, 125, 10, 0.35);
+}
+
+@media (max-width: 768px) {
+  .almanac-week {
+    grid-template-columns: repeat(7, minmax(46px, 1fr));
+    gap: 4px;
+  }
+
+  .almanac-day { padding: 8px 2px 6px; }
+  .alm-dev { font-size: 0.68rem; }
+  .alm-badge { font-size: 0.58rem; }
+  .almanac-plan { grid-template-columns: 1fr; }
 }
 
 /* Keyboard navigation: gold focus ring on interactive elements */

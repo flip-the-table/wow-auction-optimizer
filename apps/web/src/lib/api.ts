@@ -101,6 +101,37 @@ export async function fetchOpportunities(params: {
     return body;
 }
 
+export interface TimingItem {
+    item: { item_id: number; name: string | null; quality: string | null; icon_url: string | null };
+    connected_realm_id: number;
+    realm_name: string | null;
+    current_price: number | null;
+    price_percentile_30d: number | null;
+    listing_count: number | null;
+    /** rel price per weekday, index 0=Sunday..6; 1.0 = the item's typical day */
+    profile: (number | null)[];
+    obs_min: number;
+    buy_dow: number;
+    sell_dow: number;
+    swing_pct: number;
+}
+
+export interface TimingResponse {
+    status: 'ok' | 'no_data';
+    region: string;
+    today_dow: number;
+    market: { dow: number; rel_price: number; rel_demand: number | null; items: number }[];
+    items: TimingItem[];
+    generated_at: string;
+}
+
+export async function fetchTiming(limit = 30): Promise<TimingResponse> {
+    const res = await fetch(`/api/timing?limit=${limit}`, { next: { revalidate: 300 } });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body?.error || `API error: ${res.status}`);
+    return body;
+}
+
 export async function fetchToken(): Promise<TokenResponse> {
     const res = await fetch('/api/token', { next: { revalidate: 900 } });
     if (!res.ok) return { status: 'unavailable' };

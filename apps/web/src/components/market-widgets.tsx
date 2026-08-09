@@ -84,6 +84,7 @@ export function AgeMixBar({ age }: {
 const NAV_TABS = [
     { href: '/', label: 'Radar', icon: '📡' },
     { href: '/watch', label: 'Opportunities', icon: '🎯' },
+    { href: '/timing', label: 'Almanac', icon: '📅' },
     { href: '/craft', label: 'Craft', icon: '⚒' },
     { href: '/lumber', label: 'Lumber', icon: '🪵' },
 ];

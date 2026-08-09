@@ -385,6 +385,24 @@ class AuctionFlowDaily(Base):
     )
 
 
+class ItemWeekdayProfile(Base):
+    """Per-item weekday price/demand rhythm, region-level, from 90d of
+    item_realm_daily. rel_* are ratios to the item's own all-week average
+    (1.0 = typical day). Powers the Almanac timing page: when each item
+    tends to peak (sell) and trough (buy). dow 0=Sunday..6 matches
+    Postgres EXTRACT(DOW) and item_opportunities.best_sell_day."""
+    __tablename__ = "item_weekday_profile"
+
+    region = Column(String(16), primary_key=True)
+    item_id = Column(Integer, primary_key=True)
+    dow = Column(Integer, primary_key=True)
+
+    rel_price = Column(Float, nullable=False)
+    rel_demand = Column(Float, nullable=True)
+    obs_days = Column(Integer, nullable=False, default=0)
+    updated_at = Column(DateTime(timezone=True), nullable=False)
+
+
 class ItemOpportunity(Base):
     """Precomputed buy/sell opportunity signals per (item, realm).
 
