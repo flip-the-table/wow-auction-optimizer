@@ -158,6 +158,14 @@ function RecipeTable({
                                             {r.best_realm.realm_name ?? `Realm ${r.best_realm.connected_realm_id}`}
                                             {' · '}{r.best_realm.market_quantity} listed
                                         </div>
+                                        {(r.est_sales_per_day ?? 0) >= 0.1 && (r.best_realm.market_quantity ?? 0) > 0 && (
+                                            <div
+                                                style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: 1 }}
+                                                title="Current stock ÷ observed removals per day — roughly how long the queue is before a fresh craft sells."
+                                            >
+                                                ⏳ queue ~{(r.best_realm.market_quantity / r.est_sales_per_day!).toFixed(r.best_realm.market_quantity / r.est_sales_per_day! >= 10 ? 0 : 1)}d
+                                            </div>
+                                        )}
                                     </td>
                                     {showUserRealm && (
                                         <td>

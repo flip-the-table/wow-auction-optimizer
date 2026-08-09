@@ -10,6 +10,7 @@ import {
     fetchHotItems,
     fetchRealmList,
     fetchRealms,
+    formatGoldCompact,
     formatZ,
     formatPct,
     nextRefreshLabel,
@@ -313,6 +314,42 @@ function HomePageInner() {
                 </div>
             </div>
 
+            {/* Market pulse — the market's vitals at a glance, derived from
+                the rows already on this page */}
+            {data && data.items.length > 0 && (() => {
+                const tracked = data.items.filter(i => (i.removals_per_day ?? 0) > 0);
+                const goldFlow = tracked.reduce(
+                    (s, i) => s + (i.removals_per_day ?? 0) * (i.current_price ?? 0), 0);
+                const hottest = [...data.items].sort(
+                    (a, b) => (b.sizzle_score ?? -99) - (a.sizzle_score ?? -99))[0];
+                const clearDays = tracked
+                    .filter(i => (i.total_quantity ?? 0) > 0)
+                    .map(i => (i.total_quantity ?? 0) / (i.removals_per_day ?? 1))
+                    .sort((a, b) => a - b);
+                const medianClear = clearDays.length
+                    ? clearDays[Math.floor(clearDays.length / 2)] : null;
+                return (
+                    <div className="pulse-strip fade-in">
+                        <div className="pulse-tile" title="Observed removals x price, summed across every tracked market on this page — the gold actually moving per day, not the gold wished for.">
+                            <span className="pulse-label">💰 Gold on the move</span>
+                            <span className="pulse-value">~{formatGoldCompact(goldFlow)}g<span className="pulse-unit">/day</span></span>
+                        </div>
+                        {hottest && (
+                            <div className="pulse-tile" title={`Highest sizzle score right now (${(hottest.sizzle_score ?? 0).toFixed(2)}).`}>
+                                <span className="pulse-label">🔥 Hottest market</span>
+                                <span className="pulse-value" style={{ color: qualityColor(hottest.item.quality) }}>{hottest.item.name}</span>
+                            </div>
+                        )}
+                        {medianClear != null && (
+                            <div className="pulse-tile" title="Median (stock / observed removals per day) across tracked markets — how long a typical undercut queue is.">
+                                <span className="pulse-label">⏳ Typical queue</span>
+                                <span className="pulse-value">~{medianClear.toFixed(1)}<span className="pulse-unit">days</span></span>
+                            </div>
+                        )}
+                    </div>
+                );
+            })()}
+
             {/* Filters */}
             <div className="filter-bar">
 
@@ -612,6 +649,14 @@ function HomePageInner() {
                                                             title="Listings removed before they could have expired (auction-ID tracking) — sold or cancelled, not expiries. Averaged over the last 3 days."
                                                         >
                                                             ⚡ ~{item.removals_per_day!.toFixed(1)}/day removed early
+                                                        </div>
+                                                    )}
+                                                    {(item.removals_per_day ?? 0) > 0 && (item.total_quantity ?? 0) > 0 && (
+                                                        <div
+                                                            style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: 1 }}
+                                                            title="Current stock ÷ observed removals per day — roughly how long the undercut queue is before a new listing sells."
+                                                        >
+                                                            ⏳ clears in ~{(item.total_quantity! / item.removals_per_day!).toFixed(item.total_quantity! / item.removals_per_day! >= 10 ? 0 : 1)}d
                                                         </div>
                                                     )}
                                                 </td>

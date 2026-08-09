@@ -8,6 +8,7 @@ import {
     RealmSlugEntry,
     fetchOpportunities,
     fetchRealmList,
+    formatGoldCompact,
     nextRefreshLabel,
     qualityColor,
     timeAgo,
@@ -216,6 +217,14 @@ export default function WatchPage() {
                                     </td>
                                     <td>
                                         <Gold copper={row.current_price} />
+                                        {(row.removals_per_day ?? 0) > 0 && (row.current_price ?? 0) > 0 && (
+                                            <div
+                                                style={{ fontSize: '0.68rem', color: 'var(--accent-emerald)', marginTop: 1, whiteSpace: 'nowrap' }}
+                                                title="Observed removals per day x current price — the gold actually moving through this market daily. Big flow + low price position = a real opportunity, not a wish."
+                                            >
+                                                💰 ~{formatGoldCompact((row.removals_per_day ?? 0) * (row.current_price ?? 0))}g/day flow
+                                            </div>
+                                        )}
                                         <AgeMixBar age={row.listing_age} />
                                     </td>
                                     <td><PricePositionGauge percentile={row.price_percentile_30d} /></td>

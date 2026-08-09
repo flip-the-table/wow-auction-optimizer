@@ -1,15 +1,16 @@
 
 :root {
-  /* WoW-inspired dark theme with gold/purple accents */
-  --bg-primary: #0a0e17;
-  --bg-secondary: #111827;
-  --bg-card: #1a2236;
-  --bg-card-hover: #1f2a42;
-  --bg-glass: rgba(26, 34, 54, 0.85);
+  /* Tavern-ledger dark: warm wood-and-hearth ground, gold accents.
+     (Was navy glass — read as a crypto dashboard, not a WoW ledger.) */
+  --bg-primary: #0e0a06;
+  --bg-secondary: #17110a;
+  --bg-card: #1e1710;
+  --bg-card-hover: #271e14;
+  --bg-glass: rgba(30, 23, 16, 0.85);
 
-  --text-primary: #e8eaf0;
-  --text-secondary: #8b95a8;
-  --text-muted: #5a6478;
+  --text-primary: #f0e9dc;
+  --text-secondary: #a89a84;
+  --text-muted: #6e6252;
 
   --accent-gold: #f5a623;
   --accent-gold-dim: #c4861e;
@@ -30,7 +31,7 @@
   --quality-artifact: #e6cc80;
   --quality-heirloom: #00ccff;
 
-  --border-subtle: rgba(139, 149, 168, 0.12);
+  --border-subtle: rgba(212, 176, 116, 0.13);
   --border-accent: rgba(245, 166, 35, 0.3);
 
   --shadow-lg: 0 10px 40px rgba(0, 0, 0, 0.4);
@@ -134,9 +135,13 @@ body::after {
   box-shadow: 0 0 3px rgba(205, 127, 50, 0.4);
 }
 
-/* Glassmorphism card */
+/* Glassmorphism card, with a gold filigree hairline along the top edge */
 .glass-card {
-  background: var(--bg-glass);
+  background-color: var(--bg-glass);
+  background-image: linear-gradient(90deg, transparent 8%, rgba(245, 166, 35, 0.22) 50%, transparent 92%);
+  background-size: 100% 1px;
+  background-repeat: no-repeat;
+  background-position: top center;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--border-subtle);
@@ -167,7 +172,7 @@ body::after {
 }
 
 .stat-badge.neutral {
-  background: rgba(139, 149, 168, 0.12);
+  background: rgba(200, 172, 128, 0.12);
   color: var(--text-secondary);
 }
 
@@ -175,7 +180,7 @@ body::after {
 .confidence-bar {
   width: 60px;
   height: 6px;
-  background: rgba(139, 149, 168, 0.15);
+  background: rgba(200, 172, 128, 0.15);
   border-radius: 3px;
   overflow: hidden;
   position: relative;
@@ -204,7 +209,7 @@ body::after {
 
 .btn-primary {
   background: linear-gradient(135deg, var(--accent-gold), var(--accent-gold-dim));
-  color: #0a0e17;
+  color: #1a1104;
 }
 
 .btn-primary:hover {
@@ -230,7 +235,7 @@ body::after {
 
 .btn-ghost:hover {
   color: var(--text-primary);
-  background: rgba(139, 149, 168, 0.08);
+  background: rgba(200, 172, 128, 0.08);
 }
 
 /* Filter controls */
@@ -327,7 +332,7 @@ body::after {
 
 .data-table td {
   padding: 10px 14px;
-  border-bottom: 1px solid rgba(139, 149, 168, 0.06);
+  border-bottom: 1px solid rgba(200, 172, 128, 0.06);
   white-space: nowrap;
 }
 
@@ -390,7 +395,7 @@ body::after {
 .hotness-bar-track {
   width: 50px;
   height: 4px;
-  background: rgba(139, 149, 168, 0.1);
+  background: rgba(200, 172, 128, 0.1);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -442,7 +447,7 @@ body::after {
   height: 9.5rem;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-subtle);
-  background: linear-gradient(160deg, rgba(245, 166, 35, 0.04), rgba(10, 14, 23, 0.4));
+  background: linear-gradient(160deg, rgba(245, 166, 35, 0.04), rgba(14, 10, 6, 0.4));
   padding: 4px;
   flex-shrink: 0;
 }
@@ -725,7 +730,7 @@ body::after {
   height: 5px;
   border-radius: 3px;
   overflow: hidden;
-  background: rgba(139, 149, 168, 0.12);
+  background: rgba(200, 172, 128, 0.12);
 }
 
 .age-mix-label {
@@ -817,7 +822,7 @@ button:hover {
   z-index: 120;
   margin: 0 -20px 6px;
   padding: 10px 20px;
-  background: rgba(10, 14, 23, 0.88);
+  background: rgba(14, 10, 6, 0.88);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border-subtle);
@@ -874,7 +879,7 @@ button:hover {
 
 .site-tab:hover {
   color: var(--text-primary);
-  background: rgba(139, 149, 168, 0.08);
+  background: rgba(200, 172, 128, 0.08);
   transform: translateY(-1px);
 }
 
@@ -1126,6 +1131,104 @@ button:hover {
   .almanac-plan { grid-template-columns: 1fr; }
 }
 
+/* Market pulse — hero stat tiles above the radar */
+.pulse-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+  margin: 2px 0 6px;
+}
+
+.pulse-tile {
+  background: var(--bg-glass);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  cursor: help;
+  min-width: 0;
+}
+
+.pulse-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.pulse-value {
+  font-family: var(--font-serif);
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pulse-unit {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-left: 3px;
+}
+
+/* --- Micro-delights (all disabled under prefers-reduced-motion) ---------- */
+
+/* Text selection in brand gold */
+::selection {
+  background: rgba(245, 166, 35, 0.3);
+  color: var(--text-primary);
+}
+
+/* The token coin flips on hover — a coin should behave like a coin */
+.token-chip .token-coin {
+  display: inline-block;
+  transition: transform 0.6s cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+.token-chip:hover .token-coin {
+  transform: rotateY(360deg);
+}
+
+/* Almanac bars grow in from their baseline */
+.alm-bar.up { transform-origin: bottom; }
+.alm-bar.down { transform-origin: top; }
+
+.alm-bar {
+  animation: almBarGrow 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes almBarGrow {
+  from { transform: translateX(-50%) scaleY(0); }
+  to { transform: translateX(-50%) scaleY(1); }
+}
+
+.rhythm-bar {
+  transform-origin: bottom;
+  animation: rhythmRise 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes rhythmRise {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+
+/* Chips answer the cursor */
+.day-chip,
+.stat-badge {
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.day-chip:hover { transform: translateY(-1px); }
+.day-chip.sell:hover { box-shadow: 0 0 10px rgba(192, 125, 10, 0.35); }
+.day-chip.buy:hover { box-shadow: 0 0 10px rgba(59, 130, 246, 0.30); }
+.stat-badge.positive:hover { box-shadow: 0 0 10px rgba(16, 185, 129, 0.30); }
+
 /* Keyboard navigation: gold focus ring on interactive elements */
 .site-tab:focus-visible,
 .btn:focus-visible,
@@ -1141,7 +1244,9 @@ button:hover {
 /* Respect reduced-motion preferences: content appears instantly */
 @media (prefers-reduced-motion: reduce) {
   .title-spin-in, .fade-in, .skeleton, .loading-spinner,
-  .data-table tbody tr, .btn, .site-tab {
+  .data-table tbody tr, .btn, .site-tab,
+  .alm-bar, .rhythm-bar, .day-chip, .stat-badge,
+  .token-chip .token-coin, .almanac-day, .plan-row {
     animation: none !important;
     transition: none !important;
   }
