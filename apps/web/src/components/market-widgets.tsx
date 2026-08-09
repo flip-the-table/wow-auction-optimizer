@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { TokenResponse, fetchToken, formatGold, formatGoldCompact, timeAgo } from '@/lib/api';
 
@@ -113,6 +113,73 @@ export function SiteNav() {
     );
 }
 
+
+// --- Client-side table sorting ----------------------------------------------
+// Rows are already loaded; sorting rearranges them without another fetch.
+// Accessors return number|string|null; nulls always sink to the bottom.
+export function useTableSort<T>(
+    rows: T[],
+    accessors: Record<string, (r: T) => number | string | null | undefined>,
+    defaultKey: string,
+    defaultDir: 'asc' | 'desc' = 'desc',
+) {
+    const [sortKey, setSortKey] = useState(defaultKey);
+    const [sortDir, setSortDir] = useState<'asc' | 'desc'>(defaultDir);
+
+    const sorted = useMemo(() => {
+        const acc = accessors[sortKey];
+        if (!acc) return rows;
+        const mul = sortDir === 'asc' ? 1 : -1;
+        return [...rows].sort((a, b) => {
+            const av = acc(a);
+            const bv = acc(b);
+            if (av == null && bv == null) return 0;
+            if (av == null) return 1;
+            if (bv == null) return -1;
+            if (typeof av === 'string' || typeof bv === 'string') {
+                return String(av).localeCompare(String(bv)) * mul;
+            }
+            return (av - (bv as number)) * mul;
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [rows, sortKey, sortDir]);
+
+    const toggle = (key: string) => {
+        if (key === sortKey) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+        else {
+            setSortKey(key);
+            setSortDir('desc');
+        }
+    };
+
+    return { sorted, sortKey, sortDir, toggle };
+}
+
+export function SortableTh({
+    label, k, sortKey, sortDir, onToggle, title,
+}: {
+    label: React.ReactNode;
+    k: string;
+    sortKey: string;
+    sortDir: 'asc' | 'desc';
+    onToggle: (k: string) => void;
+    title?: string;
+}) {
+    const active = sortKey === k;
+    return (
+        <th
+            onClick={() => onToggle(k)}
+            className={active ? 'sorted' : undefined}
+            title={title ?? 'Click to sort'}
+            style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
+        >
+            {label}
+            <span style={{ marginLeft: 4, fontSize: '0.65rem', opacity: active ? 1 : 0.35 }} aria-hidden>
+                {active ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}
+            </span>
+        </th>
+    );
+}
 
 // --- Shared gold display -----------------------------------------------------
 // >= 1,000g: compact number + single gold coin (keeps table columns narrow;

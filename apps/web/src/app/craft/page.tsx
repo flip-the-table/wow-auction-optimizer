@@ -15,7 +15,7 @@ import {
     qualityColor,
     timeAgo,
 } from '@/lib/api';
-import { SiteNav, Gold } from '@/components/market-widgets';
+import { SiteNav, Gold, SortableTh, useTableSort } from '@/components/market-widgets';
 
 const CHARACTER_STORAGE_KEY = 'ftt-character';
 
@@ -79,23 +79,35 @@ function RecipeTable({
 }) {
     const router = useRouter();
     const colCount = showUserRealm ? 6 : 5;
+    // Server order = expected gold/day; header clicks rearrange client-side
+    const { sorted, sortKey, sortDir, toggle } = useTableSort(
+        recipes,
+        {
+            name: r => r.item.name,
+            cost: r => r.craft_cost,
+            sell: r => r.best_realm.sell_price,
+            user: r => r.user_margin,
+            margin: r => r.margin,
+        },
+        'server'
+    );
     return (
         <div className="data-table-wrapper fade-in">
             <table className="data-table">
                 <thead>
                     <tr>
-                        <th title="The crafted item, its profession and expansion tier">Item</th>
-                        <th title="Sum of reagent costs (region commodity prices, vendor prices, or cheapest realm AH)">Craft Cost</th>
-                        <th title="Median buyout on the best realm with a real market (3+ listings, price within 5x the cross-realm median)">Sell (Best Realm)</th>
+                        <SortableTh label="Item" k="name" sortKey={sortKey} sortDir={sortDir} onToggle={toggle} title="The crafted item, its profession and expansion tier" />
+                        <SortableTh label="Craft Cost" k="cost" sortKey={sortKey} sortDir={sortDir} onToggle={toggle} title="Sum of reagent costs (region commodity prices, vendor prices, or cheapest realm AH)" />
+                        <SortableTh label="Sell (Best Realm)" k="sell" sortKey={sortKey} sortDir={sortDir} onToggle={toggle} title="Median buyout on the best realm with a real market (3+ listings, price within 5x the cross-realm median)" />
                         {showUserRealm && (
-                            <th title={`Sell price and margin on ${userRealmName ?? 'your realm'} — where you can actually post`}>Your Realm</th>
+                            <SortableTh label="Your Realm" k="user" sortKey={sortKey} sortDir={sortDir} onToggle={toggle} title={`Sell price and margin on ${userRealmName ?? 'your realm'} — where you can actually post`} />
                         )}
-                        <th title="Sell price x quantity x 0.95 (AH cut) - craft cost, on the best realm">Margin</th>
+                        <SortableTh label="Margin" k="margin" sortKey={sortKey} sortDir={sortDir} onToggle={toggle} title="Sell price x quantity x 0.95 (AH cut) - craft cost, on the best realm" />
                         <th title="Plain-language recommendation based on margin % over cost">Verdict</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {recipes.map((r: CraftRecipe) => {
+                    {sorted.map((r: CraftRecipe) => {
                         const isExpanded = expanded.has(r.recipe_id);
                         return (
                             <React.Fragment key={r.recipe_id}>

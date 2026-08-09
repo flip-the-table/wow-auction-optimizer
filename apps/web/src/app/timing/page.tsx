@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { TimingResponse, TimingItem, fetchTiming, qualityColor, timeAgo, nextRefreshLabel } from '@/lib/api';
-import { SiteNav, Gold } from '@/components/market-widgets';
+import { SiteNav, Gold, SortableTh, useTableSort } from '@/components/market-widgets';
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const DAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -58,6 +58,7 @@ export default function TimingPage() {
     const [data, setData] = useState<TimingResponse | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [search, setSearch] = useState('');
 
     useEffect(() => {
         fetchTiming(40)
@@ -80,6 +81,24 @@ export default function TimingPage() {
         }
         return { rows, maxAbs, best, worst };
     }, [data]);
+
+    const visibleItems = useMemo(() => {
+        const q = search.trim().toLowerCase();
+        const items = data?.items ?? [];
+        return q ? items.filter(i => (i.item.name ?? '').toLowerCase().includes(q)) : items;
+    }, [data, search]);
+
+    const { sorted: sortedItems, sortKey, sortDir, toggle } = useTableSort(
+        visibleItems,
+        {
+            name: i => i.item.name,
+            price: i => i.current_price,
+            buy: i => i.buy_dow,
+            sell: i => i.sell_dow,
+            swing: i => i.swing_pct,
+        },
+        'swing'
+    );
 
     const harvestToday = useMemo(
         () => (data?.items ?? []).filter(i => i.sell_dow === today).slice(0, 5),
@@ -203,20 +222,35 @@ export default function TimingPage() {
                     </div>
 
                     {/* --- Timing table --------------------------------------- */}
+                    <div className="filter-bar">
+                        <input
+                            type="text"
+                            className="filter-input"
+                            placeholder="Search items..."
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            style={{ minWidth: 200 }}
+                        />
+                        {search && (
+                            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                                {sortedItems.length} of {data.items.length} items
+                            </span>
+                        )}
+                    </div>
                     <div className="data-table-wrapper fade-in">
                         <table className="data-table">
                             <thead>
                                 <tr>
-                                    <th title="Ranked by weekly swing — the widest gap between cheapest and dearest day">Item</th>
-                                    <th title="Current price on the realm with this item's strongest signal">Price</th>
+                                    <SortableTh label="Item" k="name" sortKey={sortKey} sortDir={sortDir} onToggle={toggle} title="Sort by name" />
+                                    <SortableTh label="Price" k="price" sortKey={sortKey} sortDir={sortDir} onToggle={toggle} title="Current price on the realm with this item's strongest signal" />
                                     <th title="Relative price by weekday over 90 days — hover a bar for the day">Weekly rhythm</th>
-                                    <th title="Historically the cheapest weekday">Buy on</th>
-                                    <th title="Historically the dearest weekday">Sell on</th>
-                                    <th title="Cheapest day to dearest day — your timing edge">Swing</th>
+                                    <SortableTh label="Buy on" k="buy" sortKey={sortKey} sortDir={sortDir} onToggle={toggle} title="Historically the cheapest weekday" />
+                                    <SortableTh label="Sell on" k="sell" sortKey={sortKey} sortDir={sortDir} onToggle={toggle} title="Historically the dearest weekday" />
+                                    <SortableTh label="Swing" k="swing" sortKey={sortKey} sortDir={sortDir} onToggle={toggle} title="Cheapest day to dearest day — your timing edge" />
                                 </tr>
                             </thead>
                             <tbody>
-                                {data.items.map((i) => (
+                                {sortedItems.map((i) => (
                                     <tr key={i.item.item_id} onClick={() => router.push(`/item/${i.item.item_id}`)} style={{ cursor: 'pointer' }}>
                                         <td>
                                             <div className="item-cell">

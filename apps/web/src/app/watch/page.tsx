@@ -13,7 +13,7 @@ import {
     qualityColor,
     timeAgo,
 } from '@/lib/api';
-import { SiteNav, AgeMixBar, Gold } from '@/components/market-widgets';
+import { SiteNav, AgeMixBar, Gold, SortableTh, useTableSort } from '@/components/market-widgets';
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const CHARACTER_STORAGE_KEY = 'ftt-character';
@@ -95,6 +95,7 @@ export default function WatchPage() {
     const [realmList, setRealmList] = useState<RealmSlugEntry[]>([]);
     const [realm, setRealm] = useState<number | undefined>();
     const [sort, setSort] = useState('opportunity');
+    const [search, setSearch] = useState('');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [myRealm, setMyRealm] = useState<{ id: number; name: string } | null>(null);
@@ -123,6 +124,33 @@ export default function WatchPage() {
     }, [realm, sort]);
 
     useEffect(() => { loadData(); }, [loadData]);
+
+    // Client-side narrowing + rearranging of the 50 rows the lens returned.
+    // Default key 'server' has no accessor, so the lens's order is preserved
+    // until a column header is clicked.
+    const visibleRows = useMemo(() => {
+        const q = search.trim().toLowerCase();
+        const rows = data?.rows ?? [];
+        return q
+            ? rows.filter(r =>
+                (r.item.name ?? '').toLowerCase().includes(q) ||
+                (r.realm_name ?? '').toLowerCase().includes(q))
+            : rows;
+    }, [data, search]);
+
+    const { sorted: sortedRows, sortKey, sortDir, toggle } = useTableSort(
+        visibleRows,
+        {
+            name: r => r.item.name,
+            price: r => r.current_price,
+            pctl: r => r.price_percentile_30d,
+            price7: r => r.price_slope_7d,
+            demand7: r => r.demand_slope_7d,
+            supply7: r => r.supply_slope_7d,
+            score: r => r.opportunity_score,
+        },
+        'server'
+    );
 
     return (
         <div className="page-container">
@@ -156,13 +184,22 @@ export default function WatchPage() {
                         <option key={r.slug} value={r.connected_realm_id}>{r.name}</option>
                     ))}
                 </select>
-                <select className="filter-select" value={sort} onChange={(e) => setSort(e.target.value)}>
-                    <option value="opportunity">Sort: Opportunity score</option>
-                    <option value="cheapness">Sort: Cheapest vs 30d range</option>
-                    <option value="demand_momentum">Sort: Demand momentum</option>
-                    <option value="supply_squeeze">Sort: Supply squeeze</option>
-                    <option value="sell_zone">Sort: Sell zone (price at top of range)</option>
+                <select className="filter-select" value={sort} onChange={(e) => setSort(e.target.value)}
+                    title="Chooses WHICH signals the server returns (top 50 by this lens); click column headers to rearrange them">
+                    <option value="opportunity">Lens: Opportunity score</option>
+                    <option value="cheapness">Lens: Cheapest vs 30d range</option>
+                    <option value="demand_momentum">Lens: Demand momentum</option>
+                    <option value="supply_squeeze">Lens: Supply squeeze</option>
+                    <option value="sell_zone">Lens: Sell zone (price at top of range)</option>
                 </select>
+                <input
+                    type="text"
+                    className="filter-input"
+                    placeholder="Search items or realms..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    style={{ minWidth: 190 }}
+                />
                 <button className="btn btn-ghost" onClick={loadData}>↻ Refresh</button>
             </div>
 
@@ -184,19 +221,19 @@ export default function WatchPage() {
                     <table className="data-table">
                         <thead>
                             <tr>
-                                <th title="Decor item and realm">Item</th>
-                                <th title="Current listing median">Price</th>
-                                <th title="Where the current price sits in this item's own 30-day range (0 = cheapest, 100 = most expensive)">30d position</th>
-                                <th title="Price trend: last 3 days vs prior 4 days">Price 7d</th>
-                                <th title="Churn-based demand trend (includes expirations/cancellations)">Demand 7d</th>
-                                <th title="Listed supply trend — falling supply with steady demand builds price pressure">Supply 7d</th>
+                                <SortableTh label="Item" k="name" sortKey={sortKey} sortDir={sortDir} onToggle={toggle} title="Sort by item name" />
+                                <SortableTh label="Price" k="price" sortKey={sortKey} sortDir={sortDir} onToggle={toggle} title="Current listing median" />
+                                <SortableTh label="30d position" k="pctl" sortKey={sortKey} sortDir={sortDir} onToggle={toggle} title="Where the current price sits in this item's own 30-day range (0 = cheapest, 100 = most expensive)" />
+                                <SortableTh label="Price 7d" k="price7" sortKey={sortKey} sortDir={sortDir} onToggle={toggle} title="Price trend: last 3 days vs prior 4 days" />
+                                <SortableTh label="Demand 7d" k="demand7" sortKey={sortKey} sortDir={sortDir} onToggle={toggle} title="Churn-based demand trend (includes expirations/cancellations)" />
+                                <SortableTh label="Supply 7d" k="supply7" sortKey={sortKey} sortDir={sortDir} onToggle={toggle} title="Listed supply trend — falling supply with steady demand builds price pressure" />
                                 <th title="Weekday with the highest average price over this item's 90-day history (needs 4+ weeks to be meaningful)">Best day</th>
-                                <th title="0.4 x cheapness + 0.3 x demand momentum + 0.3 x supply squeeze — listing-derived, not a prediction">Score</th>
+                                <SortableTh label="Score" k="score" sortKey={sortKey} sortDir={sortDir} onToggle={toggle} title="0.4 x cheapness + 0.3 x demand momentum + 0.3 x supply squeeze — listing-derived, not a prediction" />
                                 <th>Verdict</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {data.rows.map((row) => (
+                            {sortedRows.map((row) => (
                                 <tr key={`${row.item.item_id}-${row.connected_realm_id}`}
                                     onClick={() => router.push(`/item/${row.item.item_id}?realm=${row.connected_realm_id}`)}
                                     style={{ cursor: 'pointer' }}>
