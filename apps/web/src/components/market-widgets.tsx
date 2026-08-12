@@ -82,10 +82,12 @@ export function AgeMixBar({ age }: {
 
 // --- Unified site navigation: one consistent home for every surface --------
 const NAV_TABS = [
+    { href: '/quests', label: 'Dailies', icon: '✅' },
     { href: '/', label: 'Radar', icon: '📡' },
     { href: '/watch', label: 'Opportunities', icon: '🎯' },
     { href: '/timing', label: 'Almanac', icon: '📅' },
     { href: '/craft', label: 'Craft', icon: '⚒' },
+    { href: '/merchants', label: 'Merchants', icon: '🏪' },
     { href: '/lumber', label: 'Lumber', icon: '🪵' },
 ];
 

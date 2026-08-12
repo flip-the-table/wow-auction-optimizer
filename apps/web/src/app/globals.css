@@ -1177,6 +1177,183 @@ button:hover {
   margin-left: 3px;
 }
 
+/* --- Dailies quest log ---------------------------------------------------- */
+.quest-progress-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 0 14px;
+}
+
+.quest-progress-track {
+  flex: 1;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(200, 172, 128, 0.10);
+  border: 1px solid var(--border-subtle);
+  overflow: hidden;
+}
+
+.quest-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent-gold-dim), var(--accent-gold));
+  box-shadow: 0 0 10px rgba(245, 166, 35, 0.4);
+  transition: width 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.quest-progress-label {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.quest-complete-banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: linear-gradient(135deg, rgba(245, 166, 35, 0.10), rgba(224, 112, 32, 0.05));
+  border: 1px solid rgba(245, 166, 35, 0.35);
+  border-radius: var(--radius-lg);
+  padding: 14px 20px;
+  margin-bottom: 14px;
+}
+
+.quest-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.quest-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg-glass);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  transition: border-color 0.15s ease, opacity 0.3s ease, transform 0.15s ease;
+}
+
+.quest-card:hover {
+  border-color: rgba(245, 166, 35, 0.3);
+  transform: translateX(2px);
+}
+
+.quest-card.done {
+  opacity: 0.55;
+}
+
+.quest-card.done .quest-title {
+  text-decoration: line-through;
+  text-decoration-color: rgba(245, 166, 35, 0.6);
+}
+
+.quest-check {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  border: 2px solid rgba(245, 166, 35, 0.45);
+  background: transparent;
+  color: #1a1104;
+  font-size: 1rem;
+  font-weight: 900;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.18s ease, transform 0.18s cubic-bezier(0.34, 1.6, 0.64, 1), border-color 0.18s ease;
+}
+
+.quest-check:hover {
+  border-color: var(--accent-gold);
+  transform: scale(1.08);
+}
+
+.quest-card.done .quest-check {
+  background: linear-gradient(135deg, var(--accent-gold), var(--accent-gold-dim));
+  border-color: var(--accent-gold);
+  animation: checkPop 0.3s cubic-bezier(0.34, 1.6, 0.64, 1);
+}
+
+@keyframes checkPop {
+  0% { transform: scale(0.6); }
+  60% { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+
+.quest-icon {
+  font-size: 1.35rem;
+  width: 32px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.quest-card .item-icon {
+  width: 32px;
+  height: 32px;
+}
+
+.quest-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.quest-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.quest-tag {
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.quest-title {
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: var(--text-primary);
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.quest-title:hover { text-decoration: underline; }
+
+.quest-detail {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+  line-height: 1.45;
+}
+
+.quest-go {
+  flex-shrink: 0;
+  font-size: 1.1rem;
+  color: var(--text-muted);
+  text-decoration: none;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  transition: color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+
+.quest-go:hover {
+  color: var(--accent-gold);
+  background: rgba(245, 166, 35, 0.08);
+  transform: translateX(2px);
+}
+
 /* --- Micro-delights (all disabled under prefers-reduced-motion) ---------- */
 
 /* Text selection in brand gold */
@@ -1246,7 +1423,8 @@ button:hover {
   .title-spin-in, .fade-in, .skeleton, .loading-spinner,
   .data-table tbody tr, .btn, .site-tab,
   .alm-bar, .rhythm-bar, .day-chip, .stat-badge,
-  .token-chip .token-coin, .almanac-day, .plan-row {
+  .token-chip .token-coin, .almanac-day, .plan-row,
+  .quest-check, .quest-card, .quest-go, .quest-progress-fill {
     animation: none !important;
     transition: none !important;
   }

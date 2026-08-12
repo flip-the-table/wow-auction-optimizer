@@ -122,6 +122,17 @@ async def run_cleanup():
         )
         logger.info("Auction-flow cleanup: %d rows deleted", result.rowcount)
 
+        # Seller-attribution tables: outcomes churn fast (every removal on
+        # every realm); owners only exist where the operator scanned.
+        result = await conn.execute(text(
+            "DELETE FROM auction_outcomes WHERE removed_at < NOW() - INTERVAL '60 days'"
+        ))
+        logger.info("Auction-outcome cleanup: %d rows deleted", result.rowcount)
+        result = await conn.execute(text(
+            "DELETE FROM auction_owners WHERE scanned_at < NOW() - INTERVAL '90 days'"
+        ))
+        logger.info("Auction-owner cleanup: %d rows deleted", result.rowcount)
+
         # Prune old daily history rows (table otherwise grows without bound).
         # NOTE: constant is inlined — SQLAlchemy text() does not parse a bind
         # param immediately followed by a ::cast (":days::int" reaches Postgres raw).
@@ -174,6 +185,7 @@ async def run_cleanup():
         "live_auctions",
         "auction_flow_daily",
         "item_opportunities",
+        "auction_outcomes",
     ]
     try:
         with sync_engine.connect() as conn:

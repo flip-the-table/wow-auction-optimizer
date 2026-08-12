@@ -385,6 +385,50 @@ class AuctionFlowDaily(Base):
     )
 
 
+class AuctionOutcome(Base):
+    """Per-auction lifecycle outcome, written by ingest when a tracked auction
+    disappears. 'early' = provably not expired (sold or cancelled);
+    'ambiguous' = could also be an expiry. Enables seller attribution when
+    joined with addon-scanned auction_owners rows."""
+    __tablename__ = "auction_outcomes"
+
+    region = Column(String(16), primary_key=True)
+    connected_realm_id = Column(Integer, primary_key=True)
+    auction_id = Column(BigInteger, primary_key=True)
+
+    item_id = Column(Integer, nullable=False, index=True)
+    quantity = Column(Integer, nullable=False, default=1)
+    outcome = Column(String(16), nullable=False)  # 'early' | 'ambiguous'
+    first_seen_at = Column(DateTime(timezone=True), nullable=True)
+    removed_at = Column(DateTime(timezone=True), nullable=False, index=True)
+
+
+class AuctionOwner(Base):
+    """Seller attribution from in-game AH scans (FlipTheTableCapture /fttscan).
+    The web API never exposes sellers; the game client does for item auctions.
+    Rows exist only for realms/moments the operator scanned."""
+    __tablename__ = "auction_owners"
+
+    region = Column(String(16), primary_key=True)
+    connected_realm_id = Column(Integer, primary_key=True)
+    auction_id = Column(BigInteger, primary_key=True)
+
+    item_id = Column(Integer, nullable=False, index=True)
+    seller = Column(String(128), nullable=False, index=True)
+    unit_price = Column(BigInteger, nullable=True)
+    quantity = Column(Integer, nullable=False, default=1)
+    scanned_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class ScanImport(Base):
+    """Ledger of imported AH-scan files (idempotent re-runs)."""
+    __tablename__ = "scan_imports"
+
+    filename = Column(String(256), primary_key=True)
+    rows_imported = Column(Integer, nullable=False, default=0)
+    imported_at = Column(DateTime(timezone=True), nullable=False)
+
+
 class ItemWeekdayProfile(Base):
     """Per-item weekday price/demand rhythm, region-level, from 90d of
     item_realm_daily. rel_* are ratios to the item's own all-week average

@@ -132,6 +132,90 @@ export async function fetchTiming(limit = 30): Promise<TimingResponse> {
     return body;
 }
 
+export interface MerchantSummary {
+    seller: string;
+    connected_realm_id: number;
+    realm_name: string | null;
+    tracked: number;
+    sold_ish: number;
+    ambiguous: number;
+    live_now: number;
+    gold_early: number;
+    distinct_items: number;
+    last_scanned: string | null;
+}
+
+export interface MerchantsResponse {
+    status: 'ok' | 'no_data';
+    region: string;
+    merchants: MerchantSummary[];
+    generated_at: string;
+}
+
+export async function fetchMerchants(limit = 50): Promise<MerchantsResponse> {
+    const res = await fetch(`/api/merchants?limit=${limit}`, { next: { revalidate: 300 } });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body?.error || `API error: ${res.status}`);
+    return body;
+}
+
+export interface MerchantListing {
+    auction_id: number;
+    connected_realm_id: number;
+    realm_name: string | null;
+    item: { item_id: number; name: string | null; quality: string | null; icon_url: string | null };
+    unit_price: number | null;
+    quantity: number;
+    scanned_at: string;
+    status: 'live' | 'early' | 'ambiguous' | 'unknown';
+    removed_at: string | null;
+}
+
+export interface MerchantProfileResponse {
+    status: 'ok' | 'no_data';
+    seller: string;
+    stats: {
+        tracked: number; live_now: number; sold_ish: number;
+        ambiguous: number; gold_early: number; distinct_items: number;
+    };
+    listings: MerchantListing[];
+    generated_at: string;
+}
+
+export async function fetchMerchant(name: string, realm?: number): Promise<MerchantProfileResponse> {
+    const sp = realm ? `?realm=${realm}` : '';
+    const res = await fetch(`/api/merchants/${encodeURIComponent(name)}${sp}`, { next: { revalidate: 120 } });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body?.error || `API error: ${res.status}`);
+    return body;
+}
+
+export interface QuestTask {
+    id: string;
+    tag: 'BUY' | 'SELL' | 'CRAFT' | 'SCOUT';
+    icon: string;
+    title: string;
+    detail: string;
+    href: string;
+    item?: { item_id: number; name: string | null; quality: string | null; icon_url: string | null };
+}
+
+export interface QuestsResponse {
+    status: 'ok' | 'no_data';
+    region: string;
+    date: string;
+    today_dow: number;
+    tasks: QuestTask[];
+    generated_at: string;
+}
+
+export async function fetchQuests(): Promise<QuestsResponse> {
+    const res = await fetch('/api/quests', { next: { revalidate: 300 } });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body?.error || `API error: ${res.status}`);
+    return body;
+}
+
 export async function fetchToken(): Promise<TokenResponse> {
     const res = await fetch('/api/token', { next: { revalidate: 900 } });
     if (!res.ok) return { status: 'unavailable' };

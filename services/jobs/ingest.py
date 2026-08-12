@@ -578,6 +578,29 @@ async def ingest_realm_auctions(
             for batch_start in range(0, len(flow_batch), 500):
                 await session.execute(flow_sql, flow_batch[batch_start:batch_start + 500])
 
+        # Per-auction outcomes (seller attribution): every removed auction id
+        # gets a row so addon-scanned owners can be credited later. Small
+        # (removals only), pruned by cleanup retention.
+        removed = [
+            (a_id, info) for a_id, info in prev_map.items() if a_id not in current_map
+        ]
+        if removed:
+            outcome_sql = text("""
+                INSERT INTO auction_outcomes (
+                    region, connected_realm_id, auction_id, item_id, quantity,
+                    outcome, first_seen_at, removed_at
+                ) VALUES (:r, :cr, :aid, :item, :qty, :oc, :fs, :ra)
+                ON CONFLICT (region, connected_realm_id, auction_id) DO NOTHING
+            """)
+            outcome_batch = [{
+                "r": settings.region, "cr": connected_realm_id, "aid": a_id,
+                "item": item_id, "qty": qty,
+                "oc": classify_removal(tl, dt_hours),
+                "fs": prev_first_seen.get(a_id), "ra": now,
+            } for a_id, (item_id, qty, tl) in removed]
+            for batch_start in range(0, len(outcome_batch), 500):
+                await session.execute(outcome_sql, outcome_batch[batch_start:batch_start + 500])
+
         # Replace the realm's live set (first_seen preserved for survivors)
         await session.execute(text(
             "DELETE FROM live_auctions WHERE region = :r AND connected_realm_id = :cr"
