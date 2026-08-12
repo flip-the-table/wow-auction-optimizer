@@ -852,6 +852,17 @@ button:hover {
   .nav-brand-text {
     display: none;
   }
+
+  /* 7 tabs on a phone: tighten so the bar stays ~2 rows, not 3 */
+  .site-tab {
+    padding: 5px 9px;
+    font-size: 0.76rem;
+    gap: 4px;
+  }
+
+  .site-tab .tab-icon {
+    font-size: 0.85rem;
+  }
 }
 
 /* Match the tighter mobile page-container padding so the full-bleed bar

@@ -683,8 +683,12 @@ async def _run_compute_locked(settings, t0):
         try:
             weekday_stmt = text("""
                 WITH day_price AS (
+                    -- Median across realms, not AVG: one troll-priced realm
+                    -- otherwise poisons the day (a single 22x outlier day was
+                    -- driving +100% "rhythms" on thin items).
                     SELECT d.item_id, d.date,
-                           AVG(d.median_price) AS day_price,
+                           PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY d.median_price)
+                               AS day_price,
                            AVG(d.demand_proxy) AS day_demand
                     FROM item_realm_daily d
                     WHERE d.region = :region
@@ -692,9 +696,10 @@ async def _run_compute_locked(settings, t0):
                     GROUP BY d.item_id, d.date
                 ),
                 dow_agg AS (
+                    -- Median across the ~13 samples per weekday, same reason
                     SELECT item_id,
                            EXTRACT(DOW FROM date)::int AS dow,
-                           AVG(day_price) AS p,
+                           PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY day_price) AS p,
                            AVG(day_demand) AS dm,
                            COUNT(*) AS n
                     FROM day_price

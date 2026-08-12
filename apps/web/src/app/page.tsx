@@ -332,7 +332,7 @@ function HomePageInner() {
                     <div className="pulse-strip fade-in">
                         <div className="pulse-tile" title="Observed removals x price, summed across every tracked market on this page — the gold actually moving per day, not the gold wished for.">
                             <span className="pulse-label">💰 Gold on the move</span>
-                            <span className="pulse-value">~{formatGoldCompact(goldFlow)}g<span className="pulse-unit">/day</span></span>
+                            <span className="pulse-value">~{formatGoldCompact(goldFlow)}<span className="pulse-unit">gold/day</span></span>
                         </div>
                         {hottest && (
                             <div className="pulse-tile" title={`Highest sizzle score right now (${(hottest.sizzle_score ?? 0).toFixed(2)}).`}>

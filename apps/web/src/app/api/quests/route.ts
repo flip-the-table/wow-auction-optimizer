@@ -145,7 +145,15 @@ export async function GET(_request: NextRequest) {
         WHERE rc.region = ${region} AND rc.craft_cost > 0
           AND rc.reagents_priced = rc.reagents_total
           AND bm.sell_price * 0.95 > rc.craft_cost
-        ORDER BY (bm.sell_price * 0.95 - rc.craft_cost) * bm.demand_per_day DESC
+          -- Evidence bar for a "do this today" call, stricter than the craft
+          -- page: a real market (5+ listings), a sane margin ratio (<=10x —
+          -- higher usually means troll-priced or under-costed reagents), and
+          -- demand capped at half the stock (full-stock turnover = relist
+          -- churn, not sales).
+          AND bm.market_listings >= 5
+          AND (bm.sell_price * 0.95 - rc.craft_cost) <= rc.craft_cost * 10
+        ORDER BY (bm.sell_price * 0.95 - rc.craft_cost)
+                   * LEAST(bm.demand_per_day, bm.market_listings * 0.5) DESC
         LIMIT 1
       `;
       if (craft[0]) {
