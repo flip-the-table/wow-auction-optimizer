@@ -293,8 +293,15 @@ body::after {
 }
 
 /* Must come AFTER the base sticky rule above — same specificity, so source
-   order decides which wins inside the media query. */
-@media (max-width: 1100px) {
+   order decides which wins inside the media query.
+
+   1500px, not 1100px: `overflow: clip` above the breakpoint silently AMPUTATES
+   any column that doesn't fit, with no scrollbar to reach it. At 1366px — the
+   most common laptop width — the radar table needed 1371px and lost 107px
+   (the whole Updated column) into a dead zone between 1100px and ~1380px.
+   Every viewport that can't fit the widest table now gets real scrolling;
+   sticky headers are the trade, and only above 1500px where nothing clips. */
+@media (max-width: 1500px) {
   .data-table-wrapper {
     overflow-x: auto;
   }
@@ -1187,6 +1194,25 @@ button:hover {
   color: var(--text-muted);
   margin-left: 3px;
 }
+
+/* Global staleness banner — sits under the nav on every page when the
+   pipeline has stopped refreshing. Warns without alarming: the data is still
+   real, it is just old, and the banner says exactly how old. */
+.stale-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 12px;
+  padding: 9px 16px;
+  border-radius: var(--radius-md);
+  background: rgba(245, 166, 35, 0.09);
+  border: 1px solid rgba(245, 166, 35, 0.32);
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.stale-banner strong { color: var(--accent-gold); }
 
 /* --- Dailies quest log ---------------------------------------------------- */
 .quest-progress-wrap {

@@ -305,7 +305,14 @@ function HomePageInner() {
                                 </p>
                                 {data && (
                                     <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px', display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                                        <span>{data.region.toUpperCase()} &middot; {data.total_count} items &middot; {data.baseline_window_days}d baseline &middot; Updated {timeAgo(data.generated_at)} &middot; Next data ~{nextRefreshLabel()}</span>
+                                        {/* Real data age, not response time: generated_at is when
+                                            this JSON was built and would read "just now" on
+                                            month-old data. The rows' own updated_at is the truth. */}
+                                        <span>{data.region.toUpperCase()} &middot; {data.total_count} items &middot; {data.baseline_window_days}d baseline &middot; Data {(() => {
+                                            const newest = data.items.reduce<string | null>(
+                                                (a, i) => (i.updated_at && (!a || i.updated_at > a) ? i.updated_at : a), null);
+                                            return newest ? timeAgo(newest) : timeAgo(data.generated_at);
+                                        })()} &middot; Next refresh ~{nextRefreshLabel()}</span>
                                     </span>
                                 )}
                             </>

@@ -5,11 +5,13 @@ import { usePathname } from 'next/navigation';
 import { TokenResponse, fetchToken, formatGold, formatGoldCompact, timeAgo } from '@/lib/api';
 
 // --- WoW Token chip: converts everything on the page into "sub money" ------
-export function TokenChip() {
-    const [token, setToken] = useState<TokenResponse | null>(null);
+export function TokenChip({ token: provided }: { token?: TokenResponse | null } = {}) {
+    const [fetched, setFetched] = useState<TokenResponse | null>(null);
     useEffect(() => {
-        fetchToken().then(setToken).catch(() => { });
-    }, []);
+        if (provided !== undefined) return; // parent owns the fetch
+        fetchToken().then(setFetched).catch(() => { });
+    }, [provided]);
+    const token = provided !== undefined ? provided : fetched;
     // Reserve the chip's space while the price loads — the pop-in was the
     // largest layout shift on every page (CLS 0.08 on wide tables).
     if (!token) {
@@ -91,27 +93,53 @@ const NAV_TABS = [
     { href: '/lumber', label: 'Lumber', icon: '🪵' },
 ];
 
+/** Hours after which market data is called out as stale, site-wide. The
+ *  pipeline runs 3x daily, so a full day of silence means it has stopped. */
+const STALE_AFTER_HOURS = 24;
+
 export function SiteNav() {
     const pathname = usePathname() ?? '/';
+    // One fetch shared by the chip and the staleness banner.
+    const [token, setToken] = useState<TokenResponse | null>(null);
+    useEffect(() => {
+        fetchToken().then(setToken).catch(() => setToken(null));
+    }, []);
+
+    const asOf = token?.market_data_as_of ?? null;
+    const ageHours = asOf ? (Date.now() - Date.parse(asOf)) / 3_600_000 : null;
+    const stale = ageHours != null && ageHours > STALE_AFTER_HOURS;
+
     return (
-        <nav className="site-nav" aria-label="Primary">
-            <a href="/" className="nav-brand" title="Flip the Table — WoW decor market intelligence">
-                <span aria-hidden>🪑</span>
-                <span className="nav-brand-text">Flip the Table</span>
-            </a>
-            {NAV_TABS.map(t => {
-                const active = t.href === '/' ? pathname === '/' : pathname.startsWith(t.href);
-                return (
-                    <a key={t.href} href={t.href}
-                        className={'site-tab' + (active ? ' active' : '')}
-                        aria-current={active ? 'page' : undefined}>
-                        <span className="tab-icon" aria-hidden>{t.icon}</span>
-                        {t.label}
-                    </a>
-                );
-            })}
-            <span style={{ marginLeft: 'auto' }}><TokenChip /></span>
-        </nav>
+        <>
+            <nav className="site-nav" aria-label="Primary">
+                <a href="/" className="nav-brand" title="Flip the Table — WoW decor market intelligence">
+                    <span aria-hidden>🪑</span>
+                    <span className="nav-brand-text">Flip the Table</span>
+                </a>
+                {NAV_TABS.map(t => {
+                    const active = t.href === '/' ? pathname === '/' : pathname.startsWith(t.href);
+                    return (
+                        <a key={t.href} href={t.href}
+                            className={'site-tab' + (active ? ' active' : '')}
+                            aria-current={active ? 'page' : undefined}>
+                            <span className="tab-icon" aria-hidden>{t.icon}</span>
+                            {t.label}
+                        </a>
+                    );
+                })}
+                <span style={{ marginLeft: 'auto' }}><TokenChip token={token} /></span>
+            </nav>
+            {stale && (
+                <div className="stale-banner" role="status">
+                    <span aria-hidden>⚠️</span>
+                    <span>
+                        <strong>Market data is {timeAgo(asOf!).replace(' ago', '')} old.</strong>{' '}
+                        The pipeline last refreshed {timeAgo(asOf!)} — prices, margins and
+                        signals below are from then, not from now.
+                    </span>
+                </div>
+            )}
+        </>
     );
 }
 

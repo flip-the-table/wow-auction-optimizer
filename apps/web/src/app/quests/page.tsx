@@ -64,8 +64,11 @@ export default function QuestsPage() {
                         rhythms, opportunities, margins, merchants. Check them off. Reset at daily rollover.
                     </p>
                     <span style={{ display: 'block', minHeight: '1.2em', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                        {/* "Board built" not "Updated": generated_at is when THIS
+                            response was composed, not how old the market data is.
+                            Data age is the SiteNav staleness banner's job. */}
                         {data
-                            ? <>{DAYS[data.today_dow]} (UTC) &middot; Updated {timeAgo(data.generated_at)} &middot; Fresh tasks ~{nextRefreshLabel()}</>
+                            ? <>{DAYS[data.today_dow]} (UTC) &middot; Board built {timeAgo(data.generated_at)} &middot; Next rebuild ~{nextRefreshLabel()}</>
                             : ' '}
                     </span>
                 </div>

@@ -26,6 +26,18 @@ export async function GET() {
     const sql = getDb();
     let current: any;
     let weekAgo: any;
+    // When the market data itself was last written. This endpoint is fetched
+    // on every page (SiteNav's token chip), so it is the cheapest place to
+    // carry a global freshness signal — features_latest is a ~600-row table,
+    // so MAX() here is trivial. Best-effort: never fail the token for it.
+    let marketDataAsOf: string | null = null;
+    try {
+      const [fresh] = await sql`
+        SELECT MAX(updated_at) AS as_of FROM item_realm_features_latest
+        WHERE region = ${region}
+      `;
+      marketDataAsOf = fresh?.as_of ?? null;
+    } catch { /* table may not exist yet */ }
     try {
       [current] = await sql`
         SELECT price, blizzard_updated_at, updated_at
@@ -47,9 +59,12 @@ export async function GET() {
     }
 
     if (!current) {
-      return NextResponse.json({ status: 'unavailable' }, {
-        headers: { 'Cache-Control': 'no-store' },
-      });
+      // Still surface market freshness — the staleness banner must work even
+      // when the token price itself is unavailable.
+      return NextResponse.json(
+        { status: 'unavailable', market_data_as_of: marketDataAsOf },
+        { headers: { 'Cache-Control': 'no-store' } }
+      );
     }
 
     const price = Number(current.price);
@@ -62,6 +77,7 @@ export async function GET() {
       change_7d_pct: prior ? (price - prior) / prior : null,
       blizzard_updated_at: current.blizzard_updated_at,
       updated_at: current.updated_at,
+      market_data_as_of: marketDataAsOf,
     };
     await cacheSet(cacheKey, body, CACHE_TTL);
     return NextResponse.json(body, {

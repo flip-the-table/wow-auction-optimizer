@@ -58,6 +58,9 @@ export interface TokenResponse {
     change_7d_pct?: number | null;
     blizzard_updated_at?: string | null;
     updated_at?: string | null;
+    /** When the market data itself was last written by the pipeline — drives
+     *  the global staleness banner. Null if never computed. */
+    market_data_as_of?: string | null;
 }
 
 export interface OpportunityRow {

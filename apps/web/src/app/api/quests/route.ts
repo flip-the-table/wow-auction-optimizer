@@ -137,6 +137,12 @@ export async function GET(_request: NextRequest) {
         JOIN recipe_market bm
           ON bm.region = rc.region AND bm.crafted_item_id = rc.crafted_item_id
          AND bm.demand_per_day >= 0.3
+         -- Freshness gate: every other quest source is implicitly gated (the
+         -- rhythm and opportunity sources require signals computed within a
+         -- day). Craft had none, so when the pipeline stalled this task kept
+         -- confidently recommending crafts priced weeks ago while the rest of
+         -- the board correctly went quiet.
+         AND bm.updated_at > now() - interval '2 days'
         LEFT JOIN items i ON i.id = rc.crafted_item_id
         LEFT JOIN item_media m2 ON m2.item_id = rc.crafted_item_id
         LEFT JOIN (
