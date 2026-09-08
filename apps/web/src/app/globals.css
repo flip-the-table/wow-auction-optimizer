@@ -10,7 +10,11 @@
 
   --text-primary: #f0e9dc;
   --text-secondary: #a89a84;
-  --text-muted: #6e6252;
+  /* Lightened from #6e6252, which measured 2.98:1 on card surfaces — far
+     under the WCAG AA 4.5:1 floor, and this token carries real information
+     (timestamps, queue times, quest details) at 0.68-0.78rem. Now ~4.8:1 on
+     cards while still reading as clearly recessive against --text-secondary. */
+  --text-muted: #8f8270;
 
   --accent-gold: #f5a623;
   --accent-gold-dim: #c4861e;
